@@ -6,10 +6,12 @@ services:
     region: oregon  # 或选择 singapore 距离澳洲更近
     plan: free
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn --bind 0.0.0.0:$PORT --workers 2 --timeout 120 src.web_app:app
+    startCommand: cd /opt/render/project/src && gunicorn --bind 0.0.0.0:$PORT --workers 2 --timeout 120 web_app:app
     envVars:
       - key: EBIRD_API_KEY
         sync: false  # 需要在 Render Dashboard 中手动设置
+      - key: PYTHONPATH
+        value: /opt/render/project/src
     disk:
       name: tuibird-data
       mountPath: /opt/render/project/src/output
