@@ -364,6 +364,10 @@ def api_track():
                     }
                 locations[loc_id]['observations'].append(obs)
 
+            # 获取目标鸟种代码集合（用于过滤伴生鸟种）
+            target_species_codes = set(species_codes)
+            code_to_name_map = db.get_code_to_name_map()
+
             # 写入每个地点的观测
             for i, (loc_id, loc_data) in enumerate(sorted(locations.items(),
                                                           key=lambda x: len(x[1]['observations']),
@@ -383,8 +387,42 @@ def api_track():
                     species_name = obs.get('comName', species_code)
                     obs_date = obs.get('obsDt', 'Unknown')
                     count = obs.get('howMany', 'X')
+                    sub_id = obs.get('subId')
 
                     f.write(f"- **{obs_date}**: {species_name} - 观测数量: {count} 只\n")
+
+                    # 获取该观测清单的详细信息
+                    if sub_id:
+                        try:
+                            checklist = client.get_checklist_details(sub_id)
+                            if checklist and 'obs' in checklist:
+                                total_species = len(checklist['obs'])
+                                f.write(f"  - 📋 观测清单: 共记录 **{total_species} 种**鸟类\n")
+
+                                # 找出伴生的目标鸟种（数据库中的其他鸟种）
+                                companion_species = []
+                                for checklist_obs in checklist['obs']:
+                                    obs_species_code = checklist_obs.get('speciesCode')
+                                    # 排除当前查询的鸟种，只显示其他目标鸟种
+                                    if (obs_species_code and
+                                        obs_species_code != species_code and
+                                        obs_species_code in code_to_name_map):
+                                        companion_species.append({
+                                            'code': obs_species_code,
+                                            'cn_name': code_to_name_map[obs_species_code],
+                                            'en_name': checklist_obs.get('speciesName', ''),
+                                            'count': checklist_obs.get('howMany', 'X')
+                                        })
+
+                                if companion_species:
+                                    f.write(f"  - 🐦 伴生目标鸟种 ({len(companion_species)}种):\n")
+                                    for comp in companion_species[:10]:  # 最多显示10种
+                                        f.write(f"    - {comp['cn_name']} ({comp['en_name']}) - {comp['count']} 只\n")
+                                    if len(companion_species) > 10:
+                                        f.write(f"    - ... 还有 {len(companion_species) - 10} 种\n")
+                        except Exception as e:
+                            # 获取清单失败不影响主流程
+                            print(f"获取清单详情失败 ({sub_id}): {e}")
 
                 f.write("\n")
 
