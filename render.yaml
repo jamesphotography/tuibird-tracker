@@ -2,13 +2,12 @@ services:
   - type: web
     name: tuibird-tracker
     runtime: python
+    pythonVersion: "3.11"  # 明确指定 Python 3.11（稳定且兼容）
     region: oregon  # 或选择 singapore 距离澳洲更近
     plan: free
     buildCommand: pip install -r requirements.txt
     startCommand: gunicorn --bind 0.0.0.0:$PORT --workers 2 --timeout 120 src.web_app:app
     envVars:
-      - key: PYTHON_VERSION
-        value: 3.9.18
       - key: EBIRD_API_KEY
         sync: false  # 需要在 Render Dashboard 中手动设置
     disk:
