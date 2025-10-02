@@ -92,14 +92,28 @@
             <div id="gpsModeParams" style="display: none;">
                 <div class="form-group">
                     <label class="form-label">GPS 坐标或地点名称</label>
-                    <input type="text"
-                           id="gpsLocation"
-                           class="form-control"
-                           placeholder="例如: Darwin 或 -12.4634, 130.8456">
+                    <div class="input-with-button">
+                        <input type="text"
+                               id="gpsLocation"
+                               class="form-control"
+                               placeholder="例如: Darwin Waterfront 或 Kakadu National Park">
+                        <button type="button" onclick="verifyLocation()" class="btn btn-secondary btn-sm">
+                            <i class="bi bi-search"></i> 验证地址
+                        </button>
+                    </div>
                     <small class="text-muted">
                         <i class="bi bi-lightbulb"></i>
-                        可输入地点名称或GPS坐标
+                        <strong>地点示例：</strong>城市名(Darwin)、地标(Sydney Opera House)、国家公园(Kakadu National Park)、邮编区域(Darwin NT 0800)、或GPS坐标(-12.4634, 130.8456)
                     </small>
+
+                    <!-- 验证结果显示 -->
+                    <div id="locationVerifyResult" style="display: none; margin-top: 0.75rem;">
+                        <div class="alert alert-success">
+                            <strong><i class="bi bi-check-circle"></i> 地址验证成功</strong><br>
+                            <span id="verifiedAddress"></span><br>
+                            <small>GPS坐标: <span id="verifiedCoords"></span></small>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="form-row">
@@ -402,6 +416,33 @@
 .form-range {
     width: 100%;
 }
+
+.input-with-button {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.input-with-button .form-control {
+    flex: 1;
+}
+
+.alert {
+    padding: 0.75rem 1rem;
+    border-radius: 8px;
+    border: 1px solid;
+}
+
+.alert-success {
+    background-color: #d4edda;
+    border-color: #c3e6cb;
+    color: #155724;
+}
+
+.alert-error {
+    background-color: #f8d7da;
+    border-color: #f5c6cb;
+    color: #721c24;
+}
 </style>
 {% endblock %}
 
@@ -442,6 +483,48 @@ function toggleSearchMode() {
 // 更新半径显示
 function updateRadiusDisplay(value) {
     document.getElementById('radiusDisplay').textContent = value;
+}
+
+// 验证地址
+async function verifyLocation() {
+    const gpsLocation = document.getElementById('gpsLocation').value.trim();
+    const resultDiv = document.getElementById('locationVerifyResult');
+
+    if (!gpsLocation) {
+        showNotification('请输入地点名称或GPS坐标', 'warning');
+        return;
+    }
+
+    try {
+        showNotification('正在验证地址...', 'info');
+
+        const data = await apiRequest('/api/geocode', {
+            method: 'POST',
+            body: JSON.stringify({ place_name: gpsLocation })
+        });
+
+        if (data.success) {
+            // 显示验证成功结果
+            document.getElementById('verifiedAddress').textContent = data.display_name;
+            document.getElementById('verifiedCoords').textContent =
+                `${data.latitude.toFixed(4)}, ${data.longitude.toFixed(4)}`;
+
+            resultDiv.querySelector('.alert').className = 'alert alert-success';
+            resultDiv.querySelector('strong').innerHTML = '<i class="bi bi-check-circle"></i> 地址验证成功';
+            resultDiv.style.display = 'block';
+
+            showNotification('地址验证成功', 'success');
+        } else {
+            // 显示验证失败
+            resultDiv.querySelector('.alert').className = 'alert alert-error';
+            resultDiv.querySelector('.alert').innerHTML =
+                `<strong><i class="bi bi-x-circle"></i> 地址验证失败</strong><br>${data.error}`;
+            resultDiv.style.display = 'block';
+        }
+    } catch (error) {
+        // Error already handled by apiRequest
+        resultDiv.style.display = 'none';
+    }
 }
 
 // 防抖搜索

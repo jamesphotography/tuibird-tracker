@@ -35,14 +35,28 @@
             <div id="placeInput" class="input-panel">
                 <div class="form-group">
                     <label class="form-label">地点名称</label>
-                    <input type="text"
-                           id="placeName"
-                           class="form-control"
-                           placeholder="例如: Darwin, Sydney, Melbourne">
+                    <div class="input-with-button">
+                        <input type="text"
+                               id="placeName"
+                               class="form-control"
+                               placeholder="例如: Darwin Waterfront, Kakadu National Park">
+                        <button type="button" onclick="verifyPlaceName()" class="btn btn-secondary btn-sm">
+                            <i class="bi bi-search"></i> 验证地址
+                        </button>
+                    </div>
                     <small class="text-muted">
                         <i class="bi bi-lightbulb"></i>
-                        支持城市名、地标、保护区等
+                        <strong>示例：</strong>城市(Darwin)、地标(Sydney Opera House)、国家公园(Kakadu National Park)、邮编区域(Darwin NT 0800)
                     </small>
+
+                    <!-- 验证结果显示 -->
+                    <div id="placeVerifyResult" style="display: none; margin-top: 0.75rem;">
+                        <div class="alert alert-success">
+                            <strong><i class="bi bi-check-circle"></i> 地址验证成功</strong><br>
+                            <span id="verifiedPlaceAddress"></span><br>
+                            <small>GPS坐标: <span id="verifiedPlaceCoords"></span></small>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -323,6 +337,33 @@
     font-size: 1.1rem;
     color: var(--primary-color);
     background: white;
+}
+
+.input-with-button {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.input-with-button .form-control {
+    flex: 1;
+}
+
+.alert {
+    padding: 0.75rem 1rem;
+    border-radius: 8px;
+    border: 1px solid;
+}
+
+.alert-success {
+    background-color: #d4edda;
+    border-color: #c3e6cb;
+    color: #155724;
+}
+
+.alert-error {
+    background-color: #f8d7da;
+    border-color: #f5c6cb;
+    color: #721c24;
     padding: 0.25rem 0.75rem;
     border-radius: 4px;
 }
@@ -583,11 +624,54 @@ function resetForm() {
     document.getElementById('latitude').value = '';
     document.getElementById('longitude').value = '';
     document.getElementById('parsedCoords').style.display = 'none';
+    document.getElementById('placeVerifyResult').style.display = 'none';
     document.getElementById('radius').value = 25;
     document.getElementById('daysBack').value = 14;
     document.getElementById('displayMode').value = 'brief';
     updateRadiusDisplay(25);
     switchInputMethod('place');
+}
+
+// 验证地点名称
+async function verifyPlaceName() {
+    const placeName = document.getElementById('placeName').value.trim();
+    const resultDiv = document.getElementById('placeVerifyResult');
+
+    if (!placeName) {
+        showNotification('请输入地点名称', 'warning');
+        return;
+    }
+
+    try {
+        showNotification('正在验证地址...', 'info');
+
+        const data = await apiRequest('/api/geocode', {
+            method: 'POST',
+            body: JSON.stringify({ place_name: placeName })
+        });
+
+        if (data.success) {
+            // 显示验证成功结果
+            document.getElementById('verifiedPlaceAddress').textContent = data.display_name;
+            document.getElementById('verifiedPlaceCoords').textContent =
+                `${data.latitude.toFixed(4)}, ${data.longitude.toFixed(4)}`;
+
+            resultDiv.querySelector('.alert').className = 'alert alert-success';
+            resultDiv.querySelector('strong').innerHTML = '<i class="bi bi-check-circle"></i> 地址验证成功';
+            resultDiv.style.display = 'block';
+
+            showNotification('地址验证成功', 'success');
+        } else {
+            // 显示验证失败
+            resultDiv.querySelector('.alert').className = 'alert alert-error';
+            resultDiv.querySelector('.alert').innerHTML =
+                `<strong><i class="bi bi-x-circle"></i> 地址验证失败</strong><br>${data.error}`;
+            resultDiv.style.display = 'block';
+        }
+    } catch (error) {
+        // Error already handled by apiRequest
+        resultDiv.style.display = 'none';
+    }
 }
 
 // 查看报告（跳转到结果页面）
