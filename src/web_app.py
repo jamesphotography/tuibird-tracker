@@ -310,7 +310,11 @@ def api_track():
                 lat, lng = loc_data['lat'], loc_data['lng']
                 maps_link = f"https://maps.google.com/?q={lat},{lng}" if lat and lng else "#"
 
-                f.write(f"### [No.{i} {loc_data['name']}]({maps_link}) - {len(loc_data['observations'])} 条记录\n\n")
+                obs_count = len(loc_data['observations'])
+                obs_text = f"{obs_count} 次观测" if obs_count > 1 else "1 次观测"
+
+                f.write(f"### No.{i} [{loc_data['name']}]({maps_link})\n")
+                f.write(f"**观测次数:** {obs_text}\n\n")
 
                 for obs in sorted(loc_data['observations'],
                                 key=lambda x: x.get('obsDt', ''), reverse=True):
@@ -319,7 +323,7 @@ def api_track():
                     obs_date = obs.get('obsDt', 'Unknown')
                     count = obs.get('howMany', 'X')
 
-                    f.write(f"- **{obs_date}**: {species_name} - {count} 只\n")
+                    f.write(f"- **{obs_date}**: {species_name} - 观测数量: {count} 只\n")
 
                 f.write("\n")
 
@@ -441,8 +445,8 @@ def api_region_query():
             f.write(f"**时间范围:** 最近 {days_back} 天\n")
             f.write(f"**显示模式:** {'完整模式' if display_mode == 'full' else '简要模式'}\n\n")
 
-            f.write(f"**分析摘要:** 在指定范围内，共发现 **{len(sorted_species)}** 种在数据库中的鸟类，")
-            f.write(f"共 **{len(filtered_observations)}** 条观测记录。\n\n")
+            f.write(f"**分析摘要:** 在指定范围内，共发现 **{len(sorted_species)}** 种目标鸟类，")
+            f.write(f"共 **{len(filtered_observations)}** 次观测记录。\n\n")
 
             f.write("---\n\n")
             f.write("## 📋 目标鸟种记录\n\n")
@@ -453,7 +457,8 @@ def api_region_query():
                 en_name = group['en_name']
                 obs_count = len(group['observations'])
 
-                f.write(f"### No.{i}. ({species_code}) 🐦 {cn_name} ({en_name}) - {obs_count}个目击清单\n\n")
+                f.write(f"### No.{i} ({species_code}) 🐦 {cn_name} ({en_name})\n")
+                f.write(f"**观测次数:** {obs_count} 次\n\n")
 
                 # 按时间排序
                 sorted_obs = sorted(group['observations'],
@@ -484,7 +489,7 @@ def api_region_query():
 
                     location_type = "📍私人" if obs.get('locPrivate', False) else "🔥热点"
 
-                    f.write(f"- **{obs_date}**: {location_link} {location_type} (数量: {count})\n")
+                    f.write(f"- **{obs_date}**: {location_link} {location_type} - 观测数量: {count} 只\n")
 
                 f.write("\n")
 
