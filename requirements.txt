@@ -1,5 +1,5 @@
 # TuiBird Tracker Requirements
-# Python 3.8+
+# Python 3.9+
 
 # Web Framework
 Flask==3.0.0
@@ -14,9 +14,5 @@ geopy==2.4.1
 # Data Processing
 python-dateutil==2.8.2
 
-# Optional: For better performance
+# Production WSGI Server
 gunicorn==21.2.0
-
-# System Integration (Optional)
-pystray==0.19.5
-Pillow==10.1.0
