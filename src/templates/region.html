@@ -462,9 +462,27 @@ async function startQuery() {
             return;
         }
 
-        // TODO: 使用 Geocoding API 转换地点名称为坐标
-        showNotification('地点名称转换功能开发中，请使用 GPS 坐标', 'info');
-        return;
+        // 使用 Geocoding API 转换地点名称为坐标
+        showNotification('正在查询地点坐标...', 'info');
+
+        try {
+            const geocodeData = await apiRequest('/api/geocode', {
+                method: 'POST',
+                body: JSON.stringify({ place_name: placeName })
+            });
+
+            if (geocodeData.success) {
+                lat = geocodeData.latitude;
+                lng = geocodeData.longitude;
+                showNotification(geocodeData.message, 'success');
+            } else {
+                showNotification(geocodeData.error || '无法找到该地点', 'error');
+                return;
+            }
+        } catch (error) {
+            // Error already handled by apiRequest
+            return;
+        }
 
     } else {
         lat = parseFloat(document.getElementById('latitude').value);
@@ -572,44 +590,10 @@ function resetForm() {
     switchInputMethod('place');
 }
 
-// 查看报告（弹窗预览）
-async function viewReport(reportPath) {
-    try {
-        const data = await apiRequest(`/api/report/${reportPath}`);
-
-        if (data.success) {
-            // 创建模态框显示报告
-            const modal = document.createElement('div');
-            modal.className = 'modal show';
-            modal.innerHTML = `
-                <div class="modal-content" style="max-width: 900px; max-height: 90vh;">
-                    <div class="modal-header">
-                        <h2>${data.filename}</h2>
-                        <button onclick="this.closest('.modal').remove()" class="modal-close">
-                            <i class="bi bi-x-lg"></i>
-                        </button>
-                    </div>
-                    <div class="modal-body" style="overflow-y: auto;">
-                        <div class="markdown-body">${marked.parse(data.content)}</div>
-                    </div>
-                </div>
-            `;
-
-            document.body.appendChild(modal);
-
-            // 点击外部关闭
-            modal.addEventListener('click', function(e) {
-                if (e.target === modal) {
-                    modal.remove();
-                }
-            });
-        }
-    } catch (error) {
-        // Error already handled
-    }
+// 查看报告（跳转到结果页面）
+function viewReport(reportPath) {
+    // 跳转到结果页面进行在线预览
+    window.location.href = `/result/${reportPath}`;
 }
 </script>
-
-<!-- Marked.js for Markdown rendering -->
-<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 {% endblock %}

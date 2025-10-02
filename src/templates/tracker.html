@@ -361,7 +361,6 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script>
 let selectedMode = 'single';
 let selectedSpeciesList = [];
@@ -571,41 +570,10 @@ document.getElementById('searchMode').addEventListener('change', function() {
     stateGroup.style.display = this.value === 'state' ? 'block' : 'none';
 });
 
-// 查看报告（弹窗预览）
-async function viewReport(reportPath) {
-    try {
-        const data = await apiRequest(`/api/report/${reportPath}`);
-
-        if (data.success) {
-            // 创建模态框显示报告
-            const modal = document.createElement('div');
-            modal.className = 'modal show';
-            modal.innerHTML = `
-                <div class="modal-content" style="max-width: 900px; max-height: 90vh;">
-                    <div class="modal-header">
-                        <h2>${data.filename}</h2>
-                        <button onclick="this.closest('.modal').remove()" class="modal-close">
-                            <i class="bi bi-x-lg"></i>
-                        </button>
-                    </div>
-                    <div class="modal-body" style="overflow-y: auto;">
-                        <div class="markdown-body">${marked.parse(data.content)}</div>
-                    </div>
-                </div>
-            `;
-
-            document.body.appendChild(modal);
-
-            // 点击外部关闭
-            modal.addEventListener('click', function(e) {
-                if (e.target === modal) {
-                    modal.remove();
-                }
-            });
-        }
-    } catch (error) {
-        // Error already handled
-    }
+// 查看报告（跳转到结果页面）
+function viewReport(reportPath) {
+    // 跳转到结果页面进行在线预览
+    window.location.href = `/result/${reportPath}`;
 }
 </script>
 {% endblock %}

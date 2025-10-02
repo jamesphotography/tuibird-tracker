@@ -10,6 +10,9 @@ import os
 import sys
 from datetime import datetime
 import json
+import markdown
+from geopy.geocoders import Nominatim
+from geopy.exc import GeocoderTimedOut, GeocoderServiceError
 
 # 导入现有模块
 from config import VERSION, BUILD_DATE, ConfigManager, DB_FILE, AUSTRALIA_STATES
@@ -124,6 +127,51 @@ def reports():
     return render_template('reports.html',
                          version=VERSION,
                          reports_by_date=reports_by_date)
+
+
+@app.route('/result/<path:report_path>')
+def view_result(report_path):
+    """查看报告详情（在线预览）"""
+    try:
+        output_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'output')
+        report_file = os.path.join(output_dir, report_path)
+
+        if not os.path.exists(report_file):
+            return render_template('error.html',
+                                 error_message='报告文件不存在',
+                                 version=VERSION), 404
+
+        # 读取 Markdown 文件
+        with open(report_file, 'r', encoding='utf-8') as f:
+            markdown_content = f.read()
+
+        # 转换为 HTML
+        md = markdown.Markdown(extensions=['extra', 'codehilite', 'toc'])
+        html_content = md.convert(markdown_content)
+
+        # 解析报告信息（从文件名或内容中提取）
+        filename = os.path.basename(report_file)
+
+        # 简单统计
+        species_count = markdown_content.count('### No.')
+        total_observations = markdown_content.count('条记录')
+
+        # 获取生成时间
+        mtime = os.path.getmtime(report_file)
+        timestamp = datetime.fromtimestamp(mtime).strftime('%Y-%m-%d %H:%M:%S')
+
+        return render_template('result.html',
+                             report_html=html_content,
+                             species_count=species_count if species_count > 0 else '未知',
+                             total_observations=total_observations if total_observations > 0 else '未知',
+                             timestamp=timestamp,
+                             report_path=report_path,
+                             version=VERSION)
+
+    except Exception as e:
+        return render_template('error.html',
+                             error_message=f'读取报告失败: {str(e)}',
+                             version=VERSION), 500
 
 
 # ==================== API 端点 ====================
@@ -567,6 +615,63 @@ def api_get_report(report_path):
         })
 
     except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/geocode', methods=['POST'])
+def api_geocode():
+    """将地点名称转换为GPS坐标"""
+    try:
+        data = request.json
+        place_name = data.get('place_name', '').strip()
+
+        if not place_name:
+            return jsonify({'error': '地点名称不能为空'}), 400
+
+        # 使用 Nominatim 地理编码服务
+        geolocator = Nominatim(user_agent="tuibird_tracker")
+
+        try:
+            # 优先在澳大利亚范围内搜索
+            location = geolocator.geocode(
+                place_name,
+                country_codes='au',
+                timeout=10
+            )
+
+            # 如果在澳大利亚没找到，扩大搜索范围
+            if not location:
+                location = geolocator.geocode(place_name, timeout=10)
+
+            if location:
+                return jsonify({
+                    'success': True,
+                    'latitude': location.latitude,
+                    'longitude': location.longitude,
+                    'display_name': location.address,
+                    'message': f'找到位置: {location.address}'
+                })
+            else:
+                return jsonify({
+                    'success': False,
+                    'error': '未找到该地点，请检查拼写或尝试使用更具体的地点名称'
+                }), 404
+
+        except GeocoderTimedOut:
+            return jsonify({
+                'success': False,
+                'error': '地理编码服务超时，请稍后重试'
+            }), 408
+
+        except GeocoderServiceError as e:
+            return jsonify({
+                'success': False,
+                'error': f'地理编码服务错误: {str(e)}'
+            }), 503
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
 
