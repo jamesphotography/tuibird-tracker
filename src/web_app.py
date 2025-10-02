@@ -415,11 +415,9 @@ def api_track():
                                         })
 
                                 if companion_species:
-                                    f.write(f"  - 🐦 伴生目标鸟种 ({len(companion_species)}种):\n")
-                                    for comp in companion_species[:10]:  # 最多显示10种
-                                        f.write(f"    - {comp['cn_name']} ({comp['en_name']}) - {comp['count']} 只\n")
-                                    if len(companion_species) > 10:
-                                        f.write(f"    - ... 还有 {len(companion_species) - 10} 种\n")
+                                    # 简洁格式：一行显示所有伴生鸟种，用逗号分隔
+                                    species_names = [comp['cn_name'] for comp in companion_species]
+                                    f.write(f"  - 🐦 伴生目标鸟种 ({len(companion_species)}种): {', '.join(species_names)}\n")
                         except Exception as e:
                             # 获取清单失败不影响主流程
                             print(f"获取清单详情失败 ({sub_id}): {e}")
