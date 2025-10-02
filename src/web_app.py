@@ -234,16 +234,27 @@ def api_track():
                 return jsonify({'error': 'GPS模式需要提供坐标或地点名称'}), 400
 
             # 尝试解析为坐标
+            location_name = None
+            from geopy.geocoders import Nominatim
+            geolocator = Nominatim(user_agent="tuibird_tracker")
+
             try:
                 # 支持多种格式：-12.4634, 130.8456 或 -12.4634 130.8456
                 coords = gps_location.replace(',', ' ').split()
                 if len(coords) == 2:
                     lat = float(coords[0])
                     lng = float(coords[1])
+
+                    # 反向地理编码：根据坐标查询地点名称
+                    try:
+                        reverse_location = geolocator.reverse(f"{lat}, {lng}", timeout=10, language='zh')
+                        if reverse_location:
+                            location_name = reverse_location.address
+                    except:
+                        location_name = f"GPS ({lat:.4f}, {lng:.4f})"
+
                 else:
-                    # 如果不是坐标，尝试地理编码
-                    from geopy.geocoders import Nominatim
-                    geolocator = Nominatim(user_agent="tuibird_tracker")
+                    # 如果不是坐标，尝试地理编码（地点名称转坐标）
                     location = geolocator.geocode(gps_location, country_codes='au', timeout=10)
 
                     if not location:
@@ -254,6 +265,7 @@ def api_track():
 
                     lat = location.latitude
                     lng = location.longitude
+                    location_name = location.address
             except ValueError:
                 return jsonify({'error': 'GPS坐标格式错误，请使用格式：纬度, 经度'}), 400
 
@@ -318,6 +330,8 @@ def api_track():
             # 根据搜索模式显示不同信息
             if search_mode == 'gps':
                 f.write(f"**查询模式:** GPS搜索\n")
+                if location_name:
+                    f.write(f"**搜索位置:** {location_name}\n")
                 f.write(f"**搜索中心:** GPS ({lat:.4f}, {lng:.4f})\n")
                 f.write(f"**搜索半径:** {radius} km\n")
             else:
