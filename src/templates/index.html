@@ -1,0 +1,149 @@
+{% extends "base.html" %}
+
+{% block title %}主页 - TuiBird Tracker{% endblock %}
+
+{% block content %}
+<div class="hero-section">
+    <div class="hero-content">
+        <h1 class="hero-title">
+            <i class="bi bi-binoculars-fill"></i>
+            欢迎使用 TuiBird Tracker
+        </h1>
+        <p class="hero-subtitle">
+            专业的 eBird 鸟类观测数据查询和分析工具
+        </p>
+        <div class="hero-buttons">
+            <a href="/tracker" class="btn btn-primary btn-lg">
+                <i class="bi bi-bullseye"></i> 开始追踪
+            </a>
+            <a href="/region" class="btn btn-secondary btn-lg">
+                <i class="bi bi-globe-americas"></i> 区域查询
+            </a>
+        </div>
+    </div>
+</div>
+
+<div class="features-section">
+    <h2 class="section-title">核心功能</h2>
+
+    <div class="features-grid">
+        <div class="feature-card">
+            <div class="feature-icon">
+                <i class="bi bi-search"></i>
+            </div>
+            <h3>单物种追踪</h3>
+            <p>精准追踪特定鸟种的最新观测记录，支持中英文搜索，提供详细的地点、时间和数量信息。</p>
+            <a href="/tracker" class="feature-link">开始使用 →</a>
+        </div>
+
+        <div class="feature-card">
+            <div class="feature-icon">
+                <i class="bi bi-collection-fill"></i>
+            </div>
+            <h3>多物种分析</h3>
+            <p>同时追踪多个物种，对比观测数据，生成综合分析报告，适合鸟类摄影师和观鸟爱好者。</p>
+            <a href="/tracker" class="feature-link">开始使用 →</a>
+        </div>
+
+        <div class="feature-card">
+            <div class="feature-icon">
+                <i class="bi bi-geo-alt-fill"></i>
+            </div>
+            <h3>区域查询</h3>
+            <p>输入地点或 GPS 坐标，查询该区域内所有鸟种的观测记录，支持自定义搜索半径和时间范围。</p>
+            <a href="/region" class="feature-link">开始使用 →</a>
+        </div>
+
+        <div class="feature-card">
+            <div class="feature-icon">
+                <i class="bi bi-file-earmark-text-fill"></i>
+            </div>
+            <h3>专业报告</h3>
+            <p>自动生成 Markdown 格式的详细报告，包含观测数据、统计分析和 Google Maps 地点链接。</p>
+            <a href="/reports" class="feature-link">查看报告 →</a>
+        </div>
+
+        <div class="feature-card">
+            <div class="feature-icon">
+                <i class="bi bi-clock-history"></i>
+            </div>
+            <h3>历史记录</h3>
+            <p>自动保存所有查询报告，支持按日期分组查看，随时回顾过往观测数据。</p>
+            <a href="/reports" class="feature-link">查看历史 →</a>
+        </div>
+
+        <div class="feature-card">
+            <div class="feature-icon">
+                <i class="bi bi-gear-fill"></i>
+            </div>
+            <h3>灵活配置</h3>
+            <p>自定义搜索半径、时间范围、显示模式等参数，满足不同观鸟场景的需求。</p>
+            <a href="/settings" class="feature-link">前往设置 →</a>
+        </div>
+    </div>
+</div>
+
+<div class="stats-section">
+    <h2 class="section-title">使用统计</h2>
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div class="stat-number">10,449</div>
+            <div class="stat-label">数据库鸟种数量</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-number">8</div>
+            <div class="stat-label">支持的澳大利亚地区</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-number">30</div>
+            <div class="stat-label">最长查询天数</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-number">50km</div>
+            <div class="stat-label">最大搜索半径</div>
+        </div>
+    </div>
+</div>
+
+<div class="guide-section">
+    <h2 class="section-title">快速开始</h2>
+    <div class="guide-steps">
+        <div class="step">
+            <div class="step-number">1</div>
+            <h3>配置 API Key</h3>
+            <p>前往 <a href="/settings">设置页面</a> 配置您的 eBird API Key</p>
+        </div>
+        <div class="step-arrow">→</div>
+        <div class="step">
+            <div class="step-number">2</div>
+            <h3>选择功能</h3>
+            <p>选择 <a href="/tracker">物种追踪</a> 或 <a href="/region">区域查询</a></p>
+        </div>
+        <div class="step-arrow">→</div>
+        <div class="step">
+            <div class="step-number">3</div>
+            <h3>查看结果</h3>
+            <p>等待查询完成，在线查看或导出报告</p>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // 主页动画效果
+    document.addEventListener('DOMContentLoaded', function() {
+        // 渐入动画
+        const cards = document.querySelectorAll('.feature-card');
+        cards.forEach((card, index) => {
+            card.style.opacity = '0';
+            card.style.transform = 'translateY(20px)';
+            setTimeout(() => {
+                card.style.transition = 'all 0.5s ease';
+                card.style.opacity = '1';
+                card.style.transform = 'translateY(0)';
+            }, index * 100);
+        });
+    });
+</script>
+{% endblock %}

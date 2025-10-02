@@ -1,0 +1,248 @@
+{% extends "base.html" %}
+
+{% block title %}设置 - TuiBird Tracker{% endblock %}
+
+{% block content %}
+<div class="settings-container">
+    <h1 class="page-title">
+        <i class="bi bi-gear-fill"></i> 设置
+    </h1>
+
+    <!-- API Key 配置 -->
+    <div class="settings-card">
+        <h2 class="card-title">
+            <i class="bi bi-key-fill"></i> eBird API Key 配置
+        </h2>
+
+        <div class="api-key-status">
+            {% if has_api_key %}
+            <div class="status-badge status-success">
+                <i class="bi bi-check-circle-fill"></i> 已配置
+            </div>
+            <p class="current-key">当前 API Key: <code>{{ api_key }}</code></p>
+            {% else %}
+            <div class="status-badge status-warning">
+                <i class="bi bi-exclamation-triangle-fill"></i> 未配置
+            </div>
+            <p class="text-muted">您还没有配置 eBird API Key，无法使用追踪功能。</p>
+            {% endif %}
+        </div>
+
+        <div class="api-key-form">
+            <div class="form-group">
+                <label class="form-label">API Key</label>
+                <input type="text"
+                       id="apiKeyInput"
+                       class="form-control"
+                       placeholder="请输入您的 eBird API Key">
+            </div>
+
+            <div class="form-actions">
+                <button onclick="saveApiKey()" class="btn btn-primary">
+                    <i class="bi bi-save"></i> 保存 API Key
+                </button>
+                <button onclick="testApiKey()" class="btn btn-secondary">
+                    <i class="bi bi-check-circle"></i> 验证 API Key
+                </button>
+                {% if has_api_key %}
+                <button onclick="deleteApiKey()" class="btn btn-danger">
+                    <i class="bi bi-trash"></i> 删除 API Key
+                </button>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="api-key-guide">
+            <h3>如何获取 API Key？</h3>
+            <ol>
+                <li>访问 <a href="https://ebird.org/api/keygen" target="_blank">eBird API Key 申请页面</a></li>
+                <li>登录您的 eBird 账户（如果没有账户，需要先注册）</li>
+                <li>填写申请表单，说明用途为 "Personal bird tracking tool"</li>
+                <li>提交后会立即收到 API Key，复制并粘贴到上方输入框</li>
+            </ol>
+            <p class="text-muted">
+                <i class="bi bi-info-circle"></i>
+                API Key 通常为 10-15 位的字母数字组合，请妥善保管。
+            </p>
+        </div>
+    </div>
+
+    <!-- 关于信息 -->
+    <div class="settings-card">
+        <h2 class="card-title">
+            <i class="bi bi-info-circle-fill"></i> 关于
+        </h2>
+        <div class="about-info">
+            <p><strong>版本:</strong> {{ version }}</p>
+            <p><strong>构建日期:</strong> {{ build_date }}</p>
+            <p><strong>数据来源:</strong> <a href="https://ebird.org" target="_blank">eBird.org</a></p>
+            <p><strong>项目主页:</strong> <a href="https://github.com/yourusername/tuibird-tracker" target="_blank">GitHub</a></p>
+        </div>
+    </div>
+</div>
+
+<style>
+.settings-container {
+    max-width: 800px;
+    margin: 0 auto;
+}
+
+.page-title {
+    font-size: 2.5rem;
+    margin-bottom: 2rem;
+    color: var(--primary-color);
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.settings-card {
+    background: var(--card-bg);
+    padding: 2rem;
+    border-radius: 12px;
+    box-shadow: var(--shadow-sm);
+    margin-bottom: 2rem;
+}
+
+.card-title {
+    font-size: 1.5rem;
+    margin-bottom: 1.5rem;
+    color: var(--primary-color);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.api-key-status {
+    margin-bottom: 2rem;
+    padding: 1rem;
+    background: #f8f9fa;
+    border-radius: 8px;
+}
+
+.status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    border-radius: 20px;
+    font-weight: 500;
+    margin-bottom: 1rem;
+}
+
+.status-success {
+    background: #d4edda;
+    color: #155724;
+}
+
+.status-warning {
+    background: #fff3cd;
+    color: #856404;
+}
+
+.current-key {
+    margin: 0;
+}
+
+.current-key code {
+    background: #e9ecef;
+    padding: 0.2rem 0.5rem;
+    border-radius: 4px;
+    font-family: 'Courier New', monospace;
+}
+
+.form-actions {
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.api-key-guide {
+    margin-top: 2rem;
+    padding-top: 2rem;
+    border-top: 1px solid var(--border-color);
+}
+
+.api-key-guide h3 {
+    color: var(--primary-color);
+    margin-bottom: 1rem;
+}
+
+.api-key-guide ol {
+    padding-left: 1.5rem;
+}
+
+.api-key-guide li {
+    margin-bottom: 0.5rem;
+}
+
+.about-info p {
+    margin-bottom: 0.5rem;
+}
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+async function saveApiKey() {
+    const apiKey = document.getElementById('apiKeyInput').value.trim();
+
+    if (!apiKey) {
+        showNotification('请输入 API Key', 'warning');
+        return;
+    }
+
+    try {
+        showLoading('保存中...');
+        const data = await apiRequest('/api/config/api_key', {
+            method: 'POST',
+            body: JSON.stringify({ api_key: apiKey })
+        });
+
+        hideLoading();
+
+        if (data.success) {
+            showNotification('API Key 保存成功！', 'success');
+            setTimeout(() => location.reload(), 1500);
+        } else {
+            showNotification(data.error || '保存失败', 'error');
+        }
+    } catch (error) {
+        hideLoading();
+    }
+}
+
+async function testApiKey() {
+    try {
+        const data = await apiRequest('/api/config/api_key');
+
+        if (data.success) {
+            showNotification('API Key 有效！', 'success');
+        } else {
+            showNotification('API Key 无效或未配置', 'warning');
+        }
+    } catch (error) {
+        // Error already handled by apiRequest
+    }
+}
+
+async function deleteApiKey() {
+    if (!confirm('确定要删除 API Key 吗？删除后将无法使用追踪功能。')) {
+        return;
+    }
+
+    try {
+        const data = await apiRequest('/api/config/api_key', {
+            method: 'DELETE'
+        });
+
+        if (data.success) {
+            showNotification('API Key 已删除', 'success');
+            setTimeout(() => location.reload(), 1500);
+        }
+    } catch (error) {
+        // Error already handled
+    }
+}
+</script>
+{% endblock %}

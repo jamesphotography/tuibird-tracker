@@ -1,0 +1,615 @@
+{% extends "base.html" %}
+
+{% block title %}区域查询 - TuiBird Tracker{% endblock %}
+
+{% block content %}
+<div class="region-container">
+    <h1 class="page-title">
+        <i class="bi bi-globe-americas"></i> 区域查询
+    </h1>
+
+    <div class="region-card">
+        <p class="intro-text">
+            <i class="bi bi-info-circle"></i>
+            根据 GPS 坐标或地点名称，查询该区域内所有鸟种的最近观测记录
+        </p>
+
+        <!-- 位置输入 -->
+        <div class="location-input">
+            <h3>输入位置</h3>
+
+            <div class="input-method-tabs">
+                <button onclick="switchInputMethod('place')"
+                        class="tab-btn active"
+                        id="placeTab">
+                    <i class="bi bi-pin-map-fill"></i> 地点名称
+                </button>
+                <button onclick="switchInputMethod('coords')"
+                        class="tab-btn"
+                        id="coordsTab">
+                    <i class="bi bi-geo-alt-fill"></i> GPS 坐标
+                </button>
+            </div>
+
+            <!-- 地点名称输入 -->
+            <div id="placeInput" class="input-panel">
+                <div class="form-group">
+                    <label class="form-label">地点名称</label>
+                    <input type="text"
+                           id="placeName"
+                           class="form-control"
+                           placeholder="例如: Darwin, Sydney, Melbourne">
+                    <small class="text-muted">
+                        <i class="bi bi-lightbulb"></i>
+                        支持城市名、地标、保护区等
+                    </small>
+                </div>
+            </div>
+
+            <!-- GPS 坐标输入 -->
+            <div id="coordsInput" class="input-panel" style="display: none;">
+                <div class="form-group">
+                    <label class="form-label">GPS 坐标</label>
+                    <input type="text"
+                           id="coordsString"
+                           class="form-control"
+                           placeholder="例如: -12.4634, 130.8456 或 -12.4634 130.8456"
+                           oninput="parseCoordinates(this.value)">
+                    <small class="text-muted">
+                        <i class="bi bi-lightbulb"></i>
+                        可以直接从 Google Maps 复制粘贴坐标（支持逗号或空格分隔）
+                    </small>
+                </div>
+
+                <!-- 隐藏的分离字段，用于存储解析后的值 -->
+                <input type="hidden" id="latitude">
+                <input type="hidden" id="longitude">
+
+                <!-- 显示解析结果 -->
+                <div id="parsedCoords" class="parsed-coords" style="display: none;">
+                    <div class="coords-display">
+                        <span class="coords-label">纬度:</span>
+                        <span id="displayLat" class="coords-value">--</span>
+                        <span class="coords-label">经度:</span>
+                        <span id="displayLng" class="coords-value">--</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 查询参数 -->
+        <div class="query-params">
+            <h3>查询参数</h3>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label">
+                        <i class="bi bi-circle"></i> 搜索半径 (km)
+                    </label>
+                    <input type="range"
+                           id="radius"
+                           class="form-range"
+                           min="1"
+                           max="50"
+                           value="25"
+                           oninput="updateRadiusDisplay(this.value)">
+                    <div class="range-display">
+                        <span id="radiusDisplay">25</span> km
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">
+                        <i class="bi bi-calendar"></i> 时间范围
+                    </label>
+                    <select id="daysBack" class="form-control">
+                        <option value="7">最近 7 天</option>
+                        <option value="14" selected>最近 14 天</option>
+                        <option value="30">最近 30 天</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">
+                    <i class="bi bi-list-ul"></i> 显示模式
+                </label>
+                <select id="displayMode" class="form-control">
+                    <option value="brief">简要模式 - 每个鸟种仅显示最新 5 条记录</option>
+                    <option value="full">完整模式 - 显示所有观察记录</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- 快速位置选择 -->
+        <div class="quick-locations">
+            <h3>快速选择</h3>
+            <div class="location-grid">
+                <button onclick="selectQuickLocation('Darwin', -12.4634, 130.8456)"
+                        class="location-btn">
+                    <i class="bi bi-geo-alt-fill"></i> Darwin
+                </button>
+                <button onclick="selectQuickLocation('Sydney', -33.8688, 151.2093)"
+                        class="location-btn">
+                    <i class="bi bi-geo-alt-fill"></i> Sydney
+                </button>
+                <button onclick="selectQuickLocation('Melbourne', -37.8136, 144.9631)"
+                        class="location-btn">
+                    <i class="bi bi-geo-alt-fill"></i> Melbourne
+                </button>
+                <button onclick="selectQuickLocation('Brisbane', -27.4698, 153.0251)"
+                        class="location-btn">
+                    <i class="bi bi-geo-alt-fill"></i> Brisbane
+                </button>
+                <button onclick="selectQuickLocation('Perth', -31.9505, 115.8605)"
+                        class="location-btn">
+                    <i class="bi bi-geo-alt-fill"></i> Perth
+                </button>
+                <button onclick="selectQuickLocation('Adelaide', -34.9285, 138.6007)"
+                        class="location-btn">
+                    <i class="bi bi-geo-alt-fill"></i> Adelaide
+                </button>
+            </div>
+        </div>
+
+        <!-- 操作按钮 -->
+        <div class="action-buttons">
+            <button onclick="startQuery()" class="btn btn-primary btn-lg">
+                <i class="bi bi-search"></i> 开始查询
+            </button>
+            <button onclick="resetForm()" class="btn btn-secondary">
+                <i class="bi bi-arrow-counterclockwise"></i> 重置
+            </button>
+        </div>
+    </div>
+
+    <!-- 结果显示 -->
+    <div id="resultsArea" style="display: none;">
+        <h2>查询结果</h2>
+        <div id="resultsContent"></div>
+    </div>
+</div>
+
+<style>
+.region-container {
+    max-width: 900px;
+    margin: 0 auto;
+}
+
+.page-title {
+    font-size: 2.5rem;
+    margin-bottom: 2rem;
+    color: var(--primary-color);
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.region-card {
+    background: var(--card-bg);
+    padding: 2rem;
+    border-radius: 12px;
+    box-shadow: var(--shadow-sm);
+}
+
+.intro-text {
+    background: #e3f2fd;
+    padding: 1rem;
+    border-radius: 8px;
+    margin-bottom: 2rem;
+    color: var(--text-dark);
+}
+
+.location-input,
+.query-params,
+.quick-locations {
+    margin-bottom: 2rem;
+}
+
+.location-input h3,
+.query-params h3,
+.quick-locations h3 {
+    font-size: 1.2rem;
+    margin-bottom: 1rem;
+    color: var(--primary-color);
+}
+
+.input-method-tabs {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 1.5rem;
+}
+
+.tab-btn {
+    flex: 1;
+    padding: 1rem;
+    border: 2px solid var(--border-color);
+    border-radius: 8px;
+    background: white;
+    cursor: pointer;
+    transition: var(--transition);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    font-weight: 500;
+}
+
+.tab-btn:hover {
+    border-color: var(--secondary-color);
+}
+
+.tab-btn.active {
+    border-color: var(--primary-color);
+    background: linear-gradient(135deg, #f0f9ff, #e0f2fe);
+    color: var(--primary-color);
+}
+
+.input-panel {
+    animation: fadeIn 0.3s;
+}
+
+.form-range {
+    width: 100%;
+}
+
+.range-display {
+    text-align: center;
+    font-size: 1.2rem;
+    font-weight: 600;
+    color: var(--primary-color);
+    margin-top: 0.5rem;
+}
+
+.location-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 1rem;
+}
+
+.location-btn {
+    padding: 1rem;
+    border: 2px solid var(--border-color);
+    border-radius: 8px;
+    background: white;
+    cursor: pointer;
+    transition: var(--transition);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.location-btn i {
+    font-size: 1.5rem;
+    color: var(--secondary-color);
+}
+
+.location-btn:hover {
+    border-color: var(--secondary-color);
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+}
+
+.action-buttons {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+    margin-top: 2rem;
+}
+
+.parsed-coords {
+    margin-top: 1rem;
+    padding: 1rem;
+    background: #e8f5e9;
+    border-radius: 8px;
+    border-left: 4px solid var(--success-color);
+}
+
+.coords-display {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.coords-label {
+    font-weight: 600;
+    color: var(--text-dark);
+}
+
+.coords-value {
+    font-family: 'Courier New', monospace;
+    font-size: 1.1rem;
+    color: var(--primary-color);
+    background: white;
+    padding: 0.25rem 0.75rem;
+    border-radius: 4px;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let currentInputMethod = 'place';
+
+function switchInputMethod(method) {
+    currentInputMethod = method;
+
+    // 更新标签页状态
+    document.getElementById('placeTab').classList.toggle('active', method === 'place');
+    document.getElementById('coordsTab').classList.toggle('active', method === 'coords');
+
+    // 切换输入面板
+    document.getElementById('placeInput').style.display = method === 'place' ? 'block' : 'none';
+    document.getElementById('coordsInput').style.display = method === 'coords' ? 'block' : 'none';
+}
+
+function parseCoordinates(input) {
+    /**
+     * 解析各种格式的坐标字符串
+     * 支持的格式:
+     * - -12.4634, 130.8456
+     * - -12.4634 130.8456
+     * - (-12.4634, 130.8456)
+     * - 39°54'25.2"N 116°24'26.6"E (Google Maps 格式)
+     */
+
+    input = input.trim();
+
+    if (!input) {
+        document.getElementById('parsedCoords').style.display = 'none';
+        document.getElementById('latitude').value = '';
+        document.getElementById('longitude').value = '';
+        return;
+    }
+
+    let lat = null;
+    let lng = null;
+
+    // 移除括号
+    input = input.replace(/[()]/g, '');
+
+    // 尝试匹配各种格式
+
+    // 格式 1: 简单的逗号或空格分隔 (最常见)
+    const simplePattern = /^(-?\d+\.?\d*)[,\s]+(-?\d+\.?\d*)$/;
+    const simpleMatch = input.match(simplePattern);
+
+    if (simpleMatch) {
+        lat = parseFloat(simpleMatch[1]);
+        lng = parseFloat(simpleMatch[2]);
+    } else {
+        // 格式 2: 度分秒格式 (39°54'25.2"N 116°24'26.6"E)
+        const dmsPattern = /(\d+)°(\d+)'([\d.]+)"([NS])\s+(\d+)°(\d+)'([\d.]+)"([EW])/;
+        const dmsMatch = input.match(dmsPattern);
+
+        if (dmsMatch) {
+            // 转换度分秒为十进制
+            const latDeg = parseInt(dmsMatch[1]);
+            const latMin = parseInt(dmsMatch[2]);
+            const latSec = parseFloat(dmsMatch[3]);
+            const latDir = dmsMatch[4];
+
+            const lngDeg = parseInt(dmsMatch[5]);
+            const lngMin = parseInt(dmsMatch[6]);
+            const lngSec = parseFloat(dmsMatch[7]);
+            const lngDir = dmsMatch[8];
+
+            lat = latDeg + latMin/60 + latSec/3600;
+            lng = lngDeg + lngMin/60 + lngSec/3600;
+
+            if (latDir === 'S') lat = -lat;
+            if (lngDir === 'W') lng = -lng;
+        }
+    }
+
+    // 验证范围
+    if (lat !== null && lng !== null) {
+        if (lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
+            // 保留6位小数
+            lat = Math.round(lat * 1000000) / 1000000;
+            lng = Math.round(lng * 1000000) / 1000000;
+
+            // 更新隐藏字段
+            document.getElementById('latitude').value = lat;
+            document.getElementById('longitude').value = lng;
+
+            // 显示解析结果
+            document.getElementById('displayLat').textContent = lat;
+            document.getElementById('displayLng').textContent = lng;
+            document.getElementById('parsedCoords').style.display = 'block';
+        } else {
+            // 坐标超出范围
+            document.getElementById('parsedCoords').style.display = 'none';
+            showNotification('坐标超出有效范围', 'warning');
+        }
+    } else {
+        // 无法解析
+        document.getElementById('parsedCoords').style.display = 'none';
+    }
+}
+
+function updateRadiusDisplay(value) {
+    document.getElementById('radiusDisplay').textContent = value;
+}
+
+function selectQuickLocation(name, lat, lng) {
+    // 切换到坐标输入模式
+    switchInputMethod('coords');
+
+    // 填充到单行输入框
+    document.getElementById('coordsString').value = `${lat}, ${lng}`;
+
+    // 触发解析
+    parseCoordinates(`${lat}, ${lng}`);
+
+    showNotification(`已选择 ${name}`, 'success');
+}
+
+async function startQuery() {
+    let lat, lng;
+
+    if (currentInputMethod === 'place') {
+        const placeName = document.getElementById('placeName').value.trim();
+        if (!placeName) {
+            showNotification('请输入地点名称', 'warning');
+            return;
+        }
+
+        // TODO: 使用 Geocoding API 转换地点名称为坐标
+        showNotification('地点名称转换功能开发中，请使用 GPS 坐标', 'info');
+        return;
+
+    } else {
+        lat = parseFloat(document.getElementById('latitude').value);
+        lng = parseFloat(document.getElementById('longitude').value);
+
+        if (!lat || !lng) {
+            showNotification('请输入有效的 GPS 坐标', 'warning');
+            return;
+        }
+
+        if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+            showNotification('GPS 坐标超出有效范围', 'error');
+            return;
+        }
+    }
+
+    const params = {
+        lat: lat,
+        lng: lng,
+        radius: parseInt(document.getElementById('radius').value),
+        days_back: parseInt(document.getElementById('daysBack').value),
+        display_mode: document.getElementById('displayMode').value
+    };
+
+    try {
+        showNotification('正在查询该区域的鸟类观测记录，请稍候...', 'info');
+
+        const data = await apiRequest('/api/region_query', {
+            method: 'POST',
+            body: JSON.stringify(params)
+        });
+
+        if (data.success) {
+            // 保存查询结果数据（用于地图显示）
+            queryResultData = data;
+
+            // 显示结果摘要
+            const message = `查询完成！找到 ${data.species_count} 种鸟类，共 ${data.observations_count} 条观测记录`;
+            showNotification(message, 'success');
+
+            // 显示结果区域
+            const resultsArea = document.getElementById('resultsArea');
+            const resultsContent = document.getElementById('resultsContent');
+
+            resultsContent.innerHTML = `
+                <div class="result-summary">
+                    <div class="summary-card">
+                        <div class="summary-icon"><i class="bi bi-check-circle-fill"></i></div>
+                        <div class="summary-content">
+                            <h3>区域查询成功</h3>
+                            <div class="summary-stats">
+                                <div class="stat-item">
+                                    <span class="stat-label">鸟种数量</span>
+                                    <span class="stat-value">${data.species_count}</span>
+                                </div>
+                                <div class="stat-item">
+                                    <span class="stat-label">观测记录</span>
+                                    <span class="stat-value">${data.observations_count}</span>
+                                </div>
+                                <div class="stat-item">
+                                    <span class="stat-label">观测地点</span>
+                                    <span class="stat-value">${data.unique_locations}</span>
+                                </div>
+                            </div>
+                            <p class="summary-note">
+                                <i class="bi bi-check-circle-fill"></i>
+                                <strong>报告已生成：</strong> ${data.report_file}
+                            </p>
+                            <div style="margin-top: 1rem; display: flex; gap: 1rem; justify-content: center;">
+                                <a href="/reports" class="btn btn-primary">
+                                    <i class="bi bi-folder-fill"></i> 查看所有报告
+                                </a>
+                                <button onclick="viewReport('${data.report_path}')" class="btn btn-secondary">
+                                    <i class="bi bi-eye-fill"></i> 预览报告
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            resultsArea.style.display = 'block';
+
+            // 滚动到结果区域
+            resultsArea.scrollIntoView({ behavior: 'smooth' });
+
+        } else {
+            showNotification(data.message || '未找到观测记录', 'warning');
+        }
+    } catch (error) {
+        // Error already handled
+    }
+}
+
+function resetForm() {
+    document.getElementById('placeName').value = '';
+    document.getElementById('coordsString').value = '';
+    document.getElementById('latitude').value = '';
+    document.getElementById('longitude').value = '';
+    document.getElementById('parsedCoords').style.display = 'none';
+    document.getElementById('radius').value = 25;
+    document.getElementById('daysBack').value = 14;
+    document.getElementById('displayMode').value = 'brief';
+    updateRadiusDisplay(25);
+    switchInputMethod('place');
+}
+
+// 查看报告（弹窗预览）
+async function viewReport(reportPath) {
+    try {
+        const data = await apiRequest(`/api/report/${reportPath}`);
+
+        if (data.success) {
+            // 创建模态框显示报告
+            const modal = document.createElement('div');
+            modal.className = 'modal show';
+            modal.innerHTML = `
+                <div class="modal-content" style="max-width: 900px; max-height: 90vh;">
+                    <div class="modal-header">
+                        <h2>${data.filename}</h2>
+                        <button onclick="this.closest('.modal').remove()" class="modal-close">
+                            <i class="bi bi-x-lg"></i>
+                        </button>
+                    </div>
+                    <div class="modal-body" style="overflow-y: auto;">
+                        <div class="markdown-body">${marked.parse(data.content)}</div>
+                    </div>
+                </div>
+            `;
+
+            document.body.appendChild(modal);
+
+            // 点击外部关闭
+            modal.addEventListener('click', function(e) {
+                if (e.target === modal) {
+                    modal.remove();
+                }
+            });
+        }
+    } catch (error) {
+        // Error already handled
+    }
+}
+</script>
+
+<!-- Marked.js for Markdown rendering -->
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+{% endblock %}

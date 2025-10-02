@@ -1,0 +1,344 @@
+{% extends "base.html" %}
+
+{% block title %}历史报告 - TuiBird Tracker{% endblock %}
+
+{% block content %}
+<div class="reports-container">
+    <h1 class="page-title">
+        <i class="bi bi-file-text-fill"></i> 历史报告
+    </h1>
+
+    {% if reports_by_date %}
+    {% for date, reports in reports_by_date.items() %}
+    <div class="date-section">
+        <h2 class="date-header">
+            <i class="bi bi-calendar-event"></i> {{ date }}
+        </h2>
+
+        <div class="reports-list">
+            {% for report in reports %}
+            <div class="report-card">
+                <div class="report-icon">
+                    {% if 'Tracker' in report.filename %}
+                    <i class="bi bi-bullseye"></i>
+                    {% elif 'Region' in report.filename or 'Birding' in report.filename %}
+                    <i class="bi bi-globe-americas"></i>
+                    {% else %}
+                    <i class="bi bi-file-earmark-text"></i>
+                    {% endif %}
+                </div>
+
+                <div class="report-info">
+                    <h3 class="report-title">{{ report.filename }}</h3>
+                </div>
+
+                <div class="report-actions">
+                    <button onclick="viewReport('{{ report.path }}')" class="btn btn-primary btn-sm">
+                        <i class="bi bi-eye"></i> 查看
+                    </button>
+                    <button onclick="downloadReport('{{ report.path }}')" class="btn btn-secondary btn-sm">
+                        <i class="bi bi-download"></i> 下载
+                    </button>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endfor %}
+    {% else %}
+    <div class="empty-state">
+        <i class="bi bi-inbox"></i>
+        <h2>暂无历史报告</h2>
+        <p>开始使用 <a href="/tracker">物种追踪</a> 或 <a href="/region">区域查询</a> 生成您的第一份报告吧！</p>
+    </div>
+    {% endif %}
+</div>
+
+<!-- 报告查看模态框 -->
+<div id="reportModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2 id="modalTitle">报告详情</h2>
+            <button onclick="closeModal()" class="modal-close">
+                <i class="bi bi-x-lg"></i>
+            </button>
+        </div>
+        <div class="modal-body" id="modalBody">
+            <!-- 报告内容将通过 JavaScript 加载 -->
+        </div>
+    </div>
+</div>
+
+<style>
+.reports-container {
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+.page-title {
+    font-size: 2.5rem;
+    margin-bottom: 2rem;
+    color: var(--primary-color);
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.date-section {
+    margin-bottom: 3rem;
+}
+
+.date-header {
+    font-size: 1.5rem;
+    color: var(--primary-color);
+    margin-bottom: 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 2px solid var(--border-color);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.reports-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.report-card {
+    background: var(--card-bg);
+    padding: 1.25rem;
+    border-radius: 8px;
+    box-shadow: var(--shadow-sm);
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    transition: var(--transition);
+}
+
+.report-card:hover {
+    transform: translateX(5px);
+    box-shadow: var(--shadow-md);
+}
+
+.report-icon {
+    width: 50px;
+    height: 50px;
+    background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+    color: white;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+    flex-shrink: 0;
+}
+
+.report-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.report-title {
+    font-size: 1rem;
+    margin-bottom: 0.25rem;
+    color: var(--text-dark);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.report-date {
+    font-size: 0.85rem;
+    color: var(--text-light);
+    margin: 0;
+}
+
+.report-actions {
+    display: flex;
+    gap: 0.5rem;
+    flex-shrink: 0;
+}
+
+.btn-sm {
+    padding: 0.4rem 0.8rem;
+    font-size: 0.85rem;
+}
+
+.empty-state {
+    text-align: center;
+    padding: 4rem 2rem;
+    background: var(--card-bg);
+    border-radius: 12px;
+    box-shadow: var(--shadow-sm);
+}
+
+.empty-state i {
+    font-size: 4rem;
+    color: var(--text-light);
+    margin-bottom: 1rem;
+}
+
+.empty-state h2 {
+    color: var(--text-dark);
+    margin-bottom: 1rem;
+}
+
+.empty-state p {
+    color: var(--text-light);
+}
+
+/* 模态框样式 */
+.modal {
+    display: none;
+    position: fixed;
+    z-index: 2000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    animation: fadeIn 0.3s;
+}
+
+.modal.show {
+    display: block;
+}
+
+.modal-content {
+    background: var(--card-bg);
+    margin: 2% auto;
+    width: 90%;
+    max-width: 900px;
+    max-height: 90vh;
+    border-radius: 12px;
+    box-shadow: var(--shadow-lg);
+    display: flex;
+    flex-direction: column;
+    animation: slideDown 0.3s;
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1.5rem;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.modal-header h2 {
+    margin: 0;
+    color: var(--primary-color);
+}
+
+.modal-close {
+    background: none;
+    border: none;
+    font-size: 1.5rem;
+    cursor: pointer;
+    color: var(--text-light);
+    padding: 0.5rem;
+    transition: var(--transition);
+}
+
+.modal-close:hover {
+    color: var(--text-dark);
+}
+
+.modal-body {
+    padding: 2rem;
+    overflow-y: auto;
+    flex: 1;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes slideDown {
+    from {
+        transform: translateY(-50px);
+        opacity: 0;
+    }
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+/* Markdown 渲染样式 */
+.modal-body h1, .modal-body h2, .modal-body h3 {
+    color: var(--primary-color);
+    margin-top: 1.5rem;
+    margin-bottom: 1rem;
+}
+
+.modal-body ul, .modal-body ol {
+    padding-left: 2rem;
+}
+
+.modal-body code {
+    background: #f5f5f5;
+    padding: 0.2rem 0.5rem;
+    border-radius: 4px;
+}
+
+.modal-body a {
+    color: var(--secondary-color);
+}
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
+<script>
+async function viewReport(reportPath) {
+    try {
+        const data = await apiRequest(`/api/report/${reportPath}`);
+
+        if (data.success) {
+            document.getElementById('modalTitle').textContent = data.filename;
+
+            // 使用 marked 库渲染 Markdown
+            const html = marked.parse(data.content);
+            document.getElementById('modalBody').innerHTML = html;
+
+            // 显示模态框
+            document.getElementById('reportModal').classList.add('show');
+        }
+    } catch (error) {
+        // Error already handled
+    }
+}
+
+function downloadReport(reportPath) {
+    // 创建一个隐藏的下载链接
+    const link = document.createElement('a');
+    link.href = `/api/report/${reportPath}`;
+    link.download = reportPath.split('/').pop();
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+}
+
+function closeModal() {
+    document.getElementById('reportModal').classList.remove('show');
+}
+
+// 点击模态框外部关闭
+document.getElementById('reportModal')?.addEventListener('click', function(e) {
+    if (e.target === this) {
+        closeModal();
+    }
+});
+
+// ESC 键关闭模态框
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        closeModal();
+    }
+});
+</script>
+{% endblock %}

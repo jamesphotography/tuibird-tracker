@@ -1,0 +1,12 @@
+# eBird CLI 追踪器依赖包
+# 核心功能依赖
+requests>=2.31.0
+geocoder>=1.38.1
+geopy>=2.4.0
+pypinyin>=0.50.0
+
+# GUI框架
+PySide6>=6.5.0
+
+# 可选：如果需要打包为可执行文件
+# pyinstaller>=5.0

@@ -1,0 +1,155 @@
+{% extends "base.html" %}
+
+{% block title %}查询结果 - TuiBird Tracker{% endblock %}
+
+{% block content %}
+<div class="result-container">
+    <div class="result-header">
+        <h1 class="page-title">
+            <i class="bi bi-check-circle-fill"></i> 查询结果
+        </h1>
+        <div class="result-meta">
+            <span class="badge">物种数量: {{ species_count }}</span>
+            <span class="badge">观测记录: {{ total_observations }}</span>
+            <span class="badge">生成时间: {{ timestamp }}</span>
+        </div>
+    </div>
+
+    <!-- 报告内容 -->
+    <div class="report-content">
+        <div class="markdown-body" id="reportContent">
+            {{ report_html | safe }}
+        </div>
+    </div>
+
+    <!-- 操作按钮 -->
+    <div class="action-bar">
+        <a href="/reports" class="btn btn-primary">
+            <i class="bi bi-folder-fill"></i> 查看所有报告
+        </a>
+        <button onclick="downloadReport()" class="btn btn-secondary">
+            <i class="bi bi-download"></i> 下载报告
+        </button>
+        <a href="/tracker" class="btn btn-secondary">
+            <i class="bi bi-arrow-left"></i> 返回追踪
+        </a>
+    </div>
+</div>
+
+<style>
+.result-container {
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+.result-header {
+    margin-bottom: 2rem;
+}
+
+.page-title {
+    font-size: 2.5rem;
+    color: var(--success-color);
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.result-meta {
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.badge {
+    background: var(--primary-color);
+    color: white;
+    padding: 0.5rem 1rem;
+    border-radius: 20px;
+    font-size: 0.9rem;
+}
+
+.report-content {
+    background: var(--card-bg);
+    padding: 2rem;
+    border-radius: 12px;
+    box-shadow: var(--shadow-sm);
+    margin-bottom: 2rem;
+}
+
+.markdown-body {
+    line-height: 1.8;
+}
+
+.markdown-body h1,
+.markdown-body h2,
+.markdown-body h3 {
+    color: var(--primary-color);
+    margin-top: 1.5rem;
+    margin-bottom: 1rem;
+}
+
+.markdown-body h1 {
+    font-size: 2rem;
+    border-bottom: 2px solid var(--border-color);
+    padding-bottom: 0.5rem;
+}
+
+.markdown-body h2 {
+    font-size: 1.5rem;
+}
+
+.markdown-body h3 {
+    font-size: 1.2rem;
+}
+
+.markdown-body ul,
+.markdown-body ol {
+    padding-left: 2rem;
+    margin: 1rem 0;
+}
+
+.markdown-body li {
+    margin-bottom: 0.5rem;
+}
+
+.markdown-body a {
+    color: var(--secondary-color);
+    text-decoration: none;
+}
+
+.markdown-body a:hover {
+    text-decoration: underline;
+}
+
+.markdown-body code {
+    background: #f5f5f5;
+    padding: 0.2rem 0.5rem;
+    border-radius: 4px;
+    font-family: 'Courier New', monospace;
+}
+
+.markdown-body blockquote {
+    border-left: 4px solid var(--primary-color);
+    padding-left: 1rem;
+    margin: 1rem 0;
+    color: var(--text-light);
+}
+
+.action-bar {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function downloadReport() {
+    // TODO: 实现下载功能
+    showNotification('下载功能开发中', 'info');
+}
+</script>
+{% endblock %}

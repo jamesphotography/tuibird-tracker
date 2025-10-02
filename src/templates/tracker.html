@@ -1,0 +1,611 @@
+{% extends "base.html" %}
+
+{% block title %}物种追踪 - TuiBird Tracker{% endblock %}
+
+{% block content %}
+<div class="tracker-container">
+    <h1 class="page-title">
+        <i class="bi bi-bullseye"></i> 物种追踪
+    </h1>
+
+    <div class="tracker-card">
+        <div class="mode-selector">
+            <h2>选择追踪模式</h2>
+            <div class="mode-buttons">
+                <button onclick="selectMode('single')" class="mode-btn active" id="singleModeBtn">
+                    <i class="bi bi-search"></i>
+                    <div>单物种追踪</div>
+                    <small>深度追踪单个鸟种</small>
+                </button>
+                <button onclick="selectMode('multi')" class="mode-btn" id="multiModeBtn">
+                    <i class="bi bi-collection-fill"></i>
+                    <div>多物种分析</div>
+                    <small>同时追踪多个鸟种</small>
+                </button>
+            </div>
+        </div>
+
+        <!-- 物种搜索 -->
+        <div class="form-group">
+            <label class="form-label">
+                <i class="bi bi-search"></i> 搜索鸟种
+                <span class="text-muted">（支持中英文）</span>
+            </label>
+            <input type="text"
+                   id="speciesSearch"
+                   class="form-control"
+                   placeholder="输入鸟种名称，如：七彩文鸟、Gouldian Finch"
+                   oninput="searchSpecies(this.value)">
+        </div>
+
+        <!-- 搜索结果 -->
+        <div id="searchResults" class="search-results" style="display: none;"></div>
+
+        <!-- 已选择的物种 -->
+        <div id="selectedSpecies" class="selected-species" style="display: none;">
+            <h3>已选择的物种</h3>
+            <div id="selectedList" class="selected-list"></div>
+        </div>
+
+        <!-- 查询参数 -->
+        <div class="query-params">
+            <h3>查询参数</h3>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label">搜索模式</label>
+                    <select id="searchMode" class="form-control">
+                        <option value="national">澳大利亚全境</option>
+                        <option value="state">特定州/地区</option>
+                    </select>
+                </div>
+
+                <div class="form-group" id="stateGroup" style="display: none;">
+                    <label class="form-label">选择州/地区</label>
+                    <select id="regionCode" class="form-control">
+                        <option value="AU-NT">北领地 (NT)</option>
+                        <option value="AU-NSW">新南威尔士 (NSW)</option>
+                        <option value="AU-QLD">昆士兰 (QLD)</option>
+                        <option value="AU-WA">西澳大利亚 (WA)</option>
+                        <option value="AU-SA">南澳大利亚 (SA)</option>
+                        <option value="AU-VIC">维多利亚 (VIC)</option>
+                        <option value="AU-ACT">首都领地 (ACT)</option>
+                        <option value="AU-TAS">塔斯马尼亚 (TAS)</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label">时间范围</label>
+                    <select id="daysBack" class="form-control">
+                        <option value="7">最近 7 天</option>
+                        <option value="14" selected>最近 14 天</option>
+                        <option value="30">最近 30 天</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">搜索半径 (km)</label>
+                    <input type="number"
+                           id="radius"
+                           class="form-control"
+                           value="25"
+                           min="1"
+                           max="50">
+                </div>
+            </div>
+        </div>
+
+        <!-- 操作按钮 -->
+        <div class="action-buttons">
+            <button onclick="startTracking()" class="btn btn-primary btn-lg" id="trackBtn" disabled>
+                <i class="bi bi-play-circle-fill"></i> 开始追踪
+            </button>
+            <button onclick="clearSelection()" class="btn btn-secondary">
+                <i class="bi bi-x-circle"></i> 清空选择
+            </button>
+        </div>
+    </div>
+
+    <!-- 结果显示区域 -->
+    <div id="resultsArea" style="display: none;">
+        <h2>追踪结果</h2>
+        <div id="resultsContent"></div>
+    </div>
+</div>
+
+<style>
+.tracker-container {
+    max-width: 1000px;
+    margin: 0 auto;
+}
+
+.page-title {
+    font-size: 2.5rem;
+    margin-bottom: 2rem;
+    color: var(--primary-color);
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.tracker-card {
+    background: var(--card-bg);
+    padding: 2rem;
+    border-radius: 12px;
+    box-shadow: var(--shadow-sm);
+}
+
+.mode-selector {
+    margin-bottom: 2rem;
+}
+
+.mode-selector h2 {
+    font-size: 1.3rem;
+    margin-bottom: 1rem;
+    color: var(--primary-color);
+}
+
+.mode-buttons {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+}
+
+.mode-btn {
+    background: white;
+    border: 2px solid var(--border-color);
+    border-radius: 12px;
+    padding: 1.5rem;
+    cursor: pointer;
+    transition: var(--transition);
+    text-align: center;
+}
+
+.mode-btn i {
+    font-size: 2rem;
+    display: block;
+    margin-bottom: 0.5rem;
+    color: var(--secondary-color);
+}
+
+.mode-btn div {
+    font-weight: 600;
+    margin-bottom: 0.25rem;
+}
+
+.mode-btn small {
+    color: var(--text-light);
+    font-size: 0.85rem;
+}
+
+.mode-btn:hover {
+    border-color: var(--secondary-color);
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+}
+
+.mode-btn.active {
+    border-color: var(--primary-color);
+    background: linear-gradient(135deg, #f0f9ff, #e0f2fe);
+}
+
+.search-results {
+    background: white;
+    border: 2px solid var(--border-color);
+    border-radius: 8px;
+    max-height: 300px;
+    overflow-y: auto;
+    margin-top: 0.5rem;
+}
+
+.search-result-item {
+    padding: 0.75rem 1rem;
+    cursor: pointer;
+    border-bottom: 1px solid var(--border-color);
+    transition: var(--transition);
+}
+
+.search-result-item:last-child {
+    border-bottom: none;
+}
+
+.search-result-item:hover {
+    background: #f8f9fa;
+}
+
+.search-result-item .cn-name {
+    font-weight: 600;
+    color: var(--text-dark);
+}
+
+.search-result-item .en-name {
+    color: var(--text-light);
+    font-size: 0.9rem;
+}
+
+.search-result-item .code {
+    font-size: 0.85rem;
+    color: var(--text-light);
+    font-family: monospace;
+}
+
+.selected-species {
+    margin: 1.5rem 0;
+    padding: 1rem;
+    background: #f8f9fa;
+    border-radius: 8px;
+}
+
+.selected-species h3 {
+    font-size: 1.1rem;
+    margin-bottom: 1rem;
+    color: var(--primary-color);
+}
+
+.selected-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.selected-tag {
+    background: var(--primary-color);
+    color: white;
+    padding: 0.5rem 1rem;
+    border-radius: 20px;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.9rem;
+}
+
+.selected-tag button {
+    background: none;
+    border: none;
+    color: white;
+    cursor: pointer;
+    padding: 0;
+    font-size: 1.2rem;
+    line-height: 1;
+}
+
+.query-params {
+    margin: 2rem 0;
+}
+
+.query-params h3 {
+    font-size: 1.1rem;
+    margin-bottom: 1rem;
+    color: var(--primary-color);
+}
+
+.form-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+}
+
+.action-buttons {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+    margin-top: 2rem;
+}
+
+/* 结果摘要样式 */
+.result-summary {
+    margin-top: 3rem;
+}
+
+.summary-card {
+    background: linear-gradient(135deg, #f0f9ff, #e0f2fe);
+    padding: 2rem;
+    border-radius: 12px;
+    border: 2px solid var(--success-color);
+    display: flex;
+    gap: 1.5rem;
+    align-items: flex-start;
+}
+
+.summary-icon {
+    font-size: 3rem;
+    color: var(--success-color);
+}
+
+.summary-content {
+    flex: 1;
+}
+
+.summary-content h3 {
+    color: var(--success-color);
+    margin-bottom: 1rem;
+}
+
+.summary-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.stat-item {
+    background: white;
+    padding: 1rem;
+    border-radius: 8px;
+    text-align: center;
+}
+
+.stat-label {
+    display: block;
+    font-size: 0.85rem;
+    color: var(--text-light);
+    margin-bottom: 0.5rem;
+}
+
+.stat-value {
+    display: block;
+    font-size: 2rem;
+    font-weight: bold;
+    color: var(--primary-color);
+}
+
+.summary-note {
+    background: white;
+    padding: 1rem;
+    border-radius: 8px;
+    margin-top: 1rem;
+}
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script>
+let selectedMode = 'single';
+let selectedSpeciesList = [];
+
+function selectMode(mode) {
+    selectedMode = mode;
+
+    // 更新按钮状态
+    document.getElementById('singleModeBtn').classList.toggle('active', mode === 'single');
+    document.getElementById('multiModeBtn').classList.toggle('active', mode === 'multi');
+
+    // 单物种模式下自动清空多选
+    if (mode === 'single' && selectedSpeciesList.length > 1) {
+        selectedSpeciesList = [];
+        updateSelectedDisplay();
+    }
+}
+
+// 防抖搜索
+const searchSpecies = debounce(async function(query) {
+    if (!query || query.length < 2) {
+        document.getElementById('searchResults').style.display = 'none';
+        return;
+    }
+
+    try {
+        const data = await apiRequest('/api/search_species', {
+            method: 'POST',
+            body: JSON.stringify({ query: query })
+        });
+
+        if (data.results && data.results.length > 0) {
+            displaySearchResults(data.results);
+        } else {
+            document.getElementById('searchResults').innerHTML =
+                '<div style="padding: 1rem; text-align: center; color: #999;">未找到相关物种</div>';
+            document.getElementById('searchResults').style.display = 'block';
+        }
+    } catch (error) {
+        // Error already handled
+    }
+}, 300);
+
+function displaySearchResults(results) {
+    const container = document.getElementById('searchResults');
+    container.innerHTML = results.map(bird => `
+        <div class="search-result-item" onclick='selectSpecies(${JSON.stringify(bird)})'>
+            <div class="cn-name">${bird.cn_name || bird.chinese_simplified || '未知'}</div>
+            <div class="en-name">${bird.en_name || bird.english_name || 'Unknown'}</div>
+            <div class="code">${bird.code || bird.ebird_code}</div>
+        </div>
+    `).join('');
+    container.style.display = 'block';
+}
+
+function selectSpecies(bird) {
+    const code = bird.code || bird.ebird_code;
+
+    // 检查是否已选择
+    if (selectedSpeciesList.find(s => s.code === code)) {
+        showNotification('该物种已在列表中', 'warning');
+        return;
+    }
+
+    // 单物种模式只允许一个
+    if (selectedMode === 'single') {
+        selectedSpeciesList = [];
+    }
+
+    selectedSpeciesList.push({
+        code: code,
+        cn_name: bird.cn_name || bird.chinese_simplified,
+        en_name: bird.en_name || bird.english_name
+    });
+
+    updateSelectedDisplay();
+    document.getElementById('searchResults').style.display = 'none';
+    document.getElementById('speciesSearch').value = '';
+}
+
+function updateSelectedDisplay() {
+    const container = document.getElementById('selectedSpecies');
+    const list = document.getElementById('selectedList');
+
+    if (selectedSpeciesList.length === 0) {
+        container.style.display = 'none';
+        document.getElementById('trackBtn').disabled = true;
+        return;
+    }
+
+    container.style.display = 'block';
+    document.getElementById('trackBtn').disabled = false;
+
+    list.innerHTML = selectedSpeciesList.map((species, index) => `
+        <div class="selected-tag">
+            <span>${species.cn_name} (${species.code})</span>
+            <button onclick="removeSpecies(${index})">×</button>
+        </div>
+    `).join('');
+}
+
+function removeSpecies(index) {
+    selectedSpeciesList.splice(index, 1);
+    updateSelectedDisplay();
+}
+
+function clearSelection() {
+    selectedSpeciesList = [];
+    updateSelectedDisplay();
+    document.getElementById('speciesSearch').value = '';
+}
+
+async function startTracking() {
+    if (selectedSpeciesList.length === 0) {
+        showNotification('请先选择要追踪的物种', 'warning');
+        return;
+    }
+
+    const params = {
+        species_codes: selectedSpeciesList.map(s => s.code),
+        species_names: selectedSpeciesList,  // 传递完整的物种信息
+        search_mode: document.getElementById('searchMode').value,
+        region_code: document.getElementById('regionCode').value,
+        days_back: parseInt(document.getElementById('daysBack').value)
+    };
+
+    // 禁用按钮，防止重复提交
+    const trackBtn = document.getElementById('trackBtn');
+    trackBtn.disabled = true;
+    trackBtn.innerHTML = '<i class="bi bi-hourglass-split"></i> 查询中...';
+
+    try {
+        showNotification('正在查询 eBird 数据，请稍候...', 'info');
+
+        const data = await apiRequest('/api/track', {
+            method: 'POST',
+            body: JSON.stringify(params)
+        });
+
+        if (data.success) {
+            // 显示结果摘要
+            const message = `查询完成！找到 ${data.observations_count} 条观测记录，` +
+                          `涉及 ${data.unique_locations} 个地点`;
+            showNotification(message, 'success');
+
+            // 显示结果区域
+            const resultsArea = document.getElementById('resultsArea');
+            const resultsContent = document.getElementById('resultsContent');
+
+            resultsContent.innerHTML = `
+                <div class="result-summary">
+                    <div class="summary-card">
+                        <div class="summary-icon"><i class="bi bi-check-circle-fill"></i></div>
+                        <div class="summary-content">
+                            <h3>查询成功</h3>
+                            <div class="summary-stats">
+                                <div class="stat-item">
+                                    <span class="stat-label">观测记录</span>
+                                    <span class="stat-value">${data.observations_count}</span>
+                                </div>
+                                <div class="stat-item">
+                                    <span class="stat-label">观测地点</span>
+                                    <span class="stat-value">${data.unique_locations}</span>
+                                </div>
+                                <div class="stat-item">
+                                    <span class="stat-label">物种数量</span>
+                                    <span class="stat-value">${data.species_count}</span>
+                                </div>
+                            </div>
+                            <p class="summary-note">
+                                <i class="bi bi-check-circle-fill"></i>
+                                <strong>报告已生成：</strong> ${data.report_file}
+                            </p>
+                            <div style="margin-top: 1rem; display: flex; gap: 1rem; justify-content: center;">
+                                <a href="/reports" class="btn btn-primary">
+                                    <i class="bi bi-folder-fill"></i> 查看所有报告
+                                </a>
+                                <button onclick="viewReport('${data.report_path}')" class="btn btn-secondary">
+                                    <i class="bi bi-eye-fill"></i> 预览报告
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            resultsArea.style.display = 'block';
+
+            // 滚动到结果区域
+            resultsArea.scrollIntoView({ behavior: 'smooth' });
+
+        } else {
+            showNotification(data.message || '未找到观测记录', 'warning');
+        }
+    } catch (error) {
+        // Error already handled
+    } finally {
+        // 恢复按钮
+        trackBtn.disabled = false;
+        trackBtn.innerHTML = '<i class="bi bi-play-circle-fill"></i> 开始追踪';
+    }
+}
+
+// 搜索模式切换
+document.getElementById('searchMode').addEventListener('change', function() {
+    const stateGroup = document.getElementById('stateGroup');
+    stateGroup.style.display = this.value === 'state' ? 'block' : 'none';
+});
+
+// 查看报告（弹窗预览）
+async function viewReport(reportPath) {
+    try {
+        const data = await apiRequest(`/api/report/${reportPath}`);
+
+        if (data.success) {
+            // 创建模态框显示报告
+            const modal = document.createElement('div');
+            modal.className = 'modal show';
+            modal.innerHTML = `
+                <div class="modal-content" style="max-width: 900px; max-height: 90vh;">
+                    <div class="modal-header">
+                        <h2>${data.filename}</h2>
+                        <button onclick="this.closest('.modal').remove()" class="modal-close">
+                            <i class="bi bi-x-lg"></i>
+                        </button>
+                    </div>
+                    <div class="modal-body" style="overflow-y: auto;">
+                        <div class="markdown-body">${marked.parse(data.content)}</div>
+                    </div>
+                </div>
+            `;
+
+            document.body.appendChild(modal);
+
+            // 点击外部关闭
+            modal.addEventListener('click', function(e) {
+                if (e.target === modal) {
+                    modal.remove();
+                }
+            });
+        }
+    } catch (error) {
+        // Error already handled
+    }
+}
+</script>
+{% endblock %}

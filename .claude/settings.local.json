@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(rm:*)",
+      "Bash(mkdir:*)",
+      "Bash(mv:*)",
+      "Bash(pip install:*)",
+      "Bash(python:*)",
+      "Bash(chmod:*)",
+      "Bash(timeout:*)",
+      "Bash(sqlite3:*)",
+      "Bash(clear)",
+      "Bash(tree:*)",
+      "Bash(awk:*)",
+      "Bash(grep:*)",
+      "Bash(curl:*)",
+      "Bash(echo \"   EBIRD_API_BASE_URL = \"\"https://api.ebird.org/v2/\"\"\")",
+      "Bash(cat:*)",
+      "Bash(python3:*)",
+      "Bash(git init:*)",
+      "Bash(git lfs:*)",
+      "Bash(git add:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
