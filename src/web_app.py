@@ -209,8 +209,7 @@ def api_track():
         data = request.json
         species_codes = data.get('species_codes', [])
         species_names = data.get('species_names', [])  # 前端传递的物种名称
-        search_mode = data.get('search_mode', 'national')
-        region_code = data.get('region_code', 'AU')
+        search_mode = data.get('search_mode', 'region')
         days_back = data.get('days_back', 14)
 
         if not species_codes:
@@ -225,24 +224,63 @@ def api_track():
 
         # 获取观测数据
         all_observations = []
-        for species_code in species_codes:
-            if search_mode == 'national':
-                # 全国查询
-                obs = client.get_recent_observations_by_species(
-                    region_code='AU',
-                    species_code=species_code,
-                    days_back=days_back
+
+        if search_mode == 'gps':
+            # GPS模式：使用坐标和半径
+            gps_location = data.get('gps_location', '').strip()
+            radius = data.get('radius', 25)
+
+            if not gps_location:
+                return jsonify({'error': 'GPS模式需要提供坐标或地点名称'}), 400
+
+            # 尝试解析为坐标
+            try:
+                # 支持多种格式：-12.4634, 130.8456 或 -12.4634 130.8456
+                coords = gps_location.replace(',', ' ').split()
+                if len(coords) == 2:
+                    lat = float(coords[0])
+                    lng = float(coords[1])
+                else:
+                    # 如果不是坐标，尝试地理编码
+                    from geopy.geocoders import Nominatim
+                    geolocator = Nominatim(user_agent="tuibird_tracker")
+                    location = geolocator.geocode(gps_location, country_codes='au', timeout=10)
+
+                    if not location:
+                        location = geolocator.geocode(gps_location, timeout=10)
+
+                    if not location:
+                        return jsonify({'error': '无法识别该地点，请输入有效的GPS坐标或地点名称'}), 400
+
+                    lat = location.latitude
+                    lng = location.longitude
+            except ValueError:
+                return jsonify({'error': 'GPS坐标格式错误，请使用格式：纬度, 经度'}), 400
+
+            # 使用GPS坐标查询每个物种
+            for species_code in species_codes:
+                obs = client.get_recent_observations_by_location(
+                    lat=lat,
+                    lng=lng,
+                    radius=radius,
+                    days_back=days_back,
+                    species_code=species_code
                 )
-            else:
-                # 州/地区查询
+                if obs:
+                    all_observations.extend(obs)
+
+        else:
+            # 区域模式：使用行政区划代码
+            region_code = data.get('region_code', 'AU')
+
+            for species_code in species_codes:
                 obs = client.get_recent_observations_by_species(
                     region_code=region_code,
                     species_code=species_code,
                     days_back=days_back
                 )
-
-            if obs:
-                all_observations.extend(obs)
+                if obs:
+                    all_observations.extend(obs)
 
         if not all_observations:
             return jsonify({
@@ -276,7 +314,16 @@ def api_track():
         with open(filepath, 'w', encoding='utf-8') as f:
             f.write(f"# 🎯 eBird 物种追踪报告 (Web版)\n\n")
             f.write(f"**生成时间:** {datetime.datetime.now().strftime('%Y年%m月%d日 %H:%M:%S')}\n")
-            f.write(f"**查询模式:** {'澳大利亚全境' if search_mode == 'national' else region_code}\n")
+
+            # 根据搜索模式显示不同信息
+            if search_mode == 'gps':
+                f.write(f"**查询模式:** GPS搜索\n")
+                f.write(f"**搜索中心:** GPS ({lat:.4f}, {lng:.4f})\n")
+                f.write(f"**搜索半径:** {radius} km\n")
+            else:
+                f.write(f"**查询模式:** 区域搜索\n")
+                f.write(f"**查询区域:** {region_code}\n")
+
             f.write(f"**时间范围:** 最近 {days_back} 天\n")
             f.write(f"**物种数量:** {len(species_codes)}\n\n")
 

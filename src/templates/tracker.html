@@ -51,48 +51,82 @@
         <div class="query-params">
             <h3>查询参数</h3>
 
-            <div class="form-row">
-                <div class="form-group">
-                    <label class="form-label">搜索模式</label>
-                    <select id="searchMode" class="form-control">
-                        <option value="national">澳大利亚全境</option>
-                        <option value="state">特定州/地区</option>
-                    </select>
-                </div>
+            <div class="form-group">
+                <label class="form-label">搜索模式</label>
+                <select id="searchMode" class="form-control" onchange="toggleSearchMode()">
+                    <option value="region">区域搜索 - 按行政区域查询</option>
+                    <option value="gps">GPS搜索 - 按坐标和半径查询</option>
+                </select>
+            </div>
 
-                <div class="form-group" id="stateGroup" style="display: none;">
-                    <label class="form-label">选择州/地区</label>
-                    <select id="regionCode" class="form-control">
-                        <option value="AU-NT">北领地 (NT)</option>
-                        <option value="AU-NSW">新南威尔士 (NSW)</option>
-                        <option value="AU-QLD">昆士兰 (QLD)</option>
-                        <option value="AU-WA">西澳大利亚 (WA)</option>
-                        <option value="AU-SA">南澳大利亚 (SA)</option>
-                        <option value="AU-VIC">维多利亚 (VIC)</option>
-                        <option value="AU-ACT">首都领地 (ACT)</option>
-                        <option value="AU-TAS">塔斯马尼亚 (TAS)</option>
-                    </select>
+            <!-- 区域搜索参数 -->
+            <div id="regionModeParams">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">选择区域</label>
+                        <select id="regionCode" class="form-control">
+                            <option value="AU">澳大利亚全境</option>
+                            <option value="AU-NT">北领地 (NT)</option>
+                            <option value="AU-NSW">新南威尔士 (NSW)</option>
+                            <option value="AU-QLD">昆士兰 (QLD)</option>
+                            <option value="AU-WA">西澳大利亚 (WA)</option>
+                            <option value="AU-SA">南澳大利亚 (SA)</option>
+                            <option value="AU-VIC">维多利亚 (VIC)</option>
+                            <option value="AU-ACT">首都领地 (ACT)</option>
+                            <option value="AU-TAS">塔斯马尼亚 (TAS)</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">时间范围</label>
+                        <select id="daysBack" class="form-control">
+                            <option value="7">最近 7 天</option>
+                            <option value="14" selected>最近 14 天</option>
+                            <option value="30">最近 30 天</option>
+                        </select>
+                    </div>
                 </div>
             </div>
 
-            <div class="form-row">
+            <!-- GPS搜索参数 -->
+            <div id="gpsModeParams" style="display: none;">
                 <div class="form-group">
-                    <label class="form-label">时间范围</label>
-                    <select id="daysBack" class="form-control">
-                        <option value="7">最近 7 天</option>
-                        <option value="14" selected>最近 14 天</option>
-                        <option value="30">最近 30 天</option>
-                    </select>
+                    <label class="form-label">GPS 坐标或地点名称</label>
+                    <input type="text"
+                           id="gpsLocation"
+                           class="form-control"
+                           placeholder="例如: Darwin 或 -12.4634, 130.8456">
+                    <small class="text-muted">
+                        <i class="bi bi-lightbulb"></i>
+                        可输入地点名称或GPS坐标
+                    </small>
                 </div>
 
-                <div class="form-group">
-                    <label class="form-label">搜索半径 (km)</label>
-                    <input type="number"
-                           id="radius"
-                           class="form-control"
-                           value="25"
-                           min="1"
-                           max="50">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">
+                            <i class="bi bi-circle"></i> 搜索半径 (km)
+                        </label>
+                        <input type="range"
+                               id="radius"
+                               class="form-range"
+                               min="1"
+                               max="50"
+                               value="25"
+                               oninput="updateRadiusDisplay(this.value)">
+                        <div class="range-display">
+                            <span id="radiusDisplay">25</span> km
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">时间范围</label>
+                        <select id="daysBackGPS" class="form-control">
+                            <option value="7">最近 7 天</option>
+                            <option value="14" selected>最近 14 天</option>
+                            <option value="30">最近 30 天</option>
+                        </select>
+                    </div>
                 </div>
             </div>
         </div>
@@ -357,6 +391,17 @@
     border-radius: 8px;
     margin-top: 1rem;
 }
+
+.range-display {
+    text-align: center;
+    margin-top: 0.5rem;
+    font-weight: 600;
+    color: var(--primary-color);
+}
+
+.form-range {
+    width: 100%;
+}
 </style>
 {% endblock %}
 
@@ -377,6 +422,26 @@ function selectMode(mode) {
         selectedSpeciesList = [];
         updateSelectedDisplay();
     }
+}
+
+// 切换搜索模式
+function toggleSearchMode() {
+    const searchMode = document.getElementById('searchMode').value;
+    const regionParams = document.getElementById('regionModeParams');
+    const gpsParams = document.getElementById('gpsModeParams');
+
+    if (searchMode === 'region') {
+        regionParams.style.display = 'block';
+        gpsParams.style.display = 'none';
+    } else {
+        regionParams.style.display = 'none';
+        gpsParams.style.display = 'block';
+    }
+}
+
+// 更新半径显示
+function updateRadiusDisplay(value) {
+    document.getElementById('radiusDisplay').textContent = value;
 }
 
 // 防抖搜索
@@ -479,13 +544,31 @@ async function startTracking() {
         return;
     }
 
+    const searchMode = document.getElementById('searchMode').value;
     const params = {
         species_codes: selectedSpeciesList.map(s => s.code),
-        species_names: selectedSpeciesList,  // 传递完整的物种信息
-        search_mode: document.getElementById('searchMode').value,
-        region_code: document.getElementById('regionCode').value,
-        days_back: parseInt(document.getElementById('daysBack').value)
+        species_names: selectedSpeciesList
     };
+
+    // 根据搜索模式准备参数
+    if (searchMode === 'region') {
+        // 区域模式
+        params.search_mode = 'region';
+        params.region_code = document.getElementById('regionCode').value;
+        params.days_back = parseInt(document.getElementById('daysBack').value);
+    } else {
+        // GPS模式
+        const gpsLocation = document.getElementById('gpsLocation').value.trim();
+        if (!gpsLocation) {
+            showNotification('请输入GPS坐标或地点名称', 'warning');
+            return;
+        }
+
+        params.search_mode = 'gps';
+        params.gps_location = gpsLocation;
+        params.radius = parseInt(document.getElementById('radius').value);
+        params.days_back = parseInt(document.getElementById('daysBackGPS').value);
+    }
 
     // 禁用按钮，防止重复提交
     const trackBtn = document.getElementById('trackBtn');
@@ -564,11 +647,6 @@ async function startTracking() {
     }
 }
 
-// 搜索模式切换
-document.getElementById('searchMode').addEventListener('change', function() {
-    const stateGroup = document.getElementById('stateGroup');
-    stateGroup.style.display = this.value === 'state' ? 'block' : 'none';
-});
 
 // 查看报告（跳转到结果页面）
 function viewReport(reportPath) {
