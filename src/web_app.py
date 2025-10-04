@@ -281,19 +281,30 @@ def add_bird_name_links(html_content):
                 # 按长度降序排列鸟名，优先匹配长名字（避免短名字被误匹配）
                 for bird_name in sorted(bird_name_set, key=len, reverse=True):
                     if bird_name in modified_text:
-                        # 使用正则替换，确保只替换独立的鸟名（避免重复替换）
-                        # 使用负向后查找和负向前查找，避免替换HTML标签内的内容
-                        pattern = r'(?<!>)(?<!</a>)' + re.escape(bird_name) + r'(?!<)'
-                        # 转义单引号，避免JavaScript字符串错误
-                        escaped_bird_name = bird_name.replace("'", "\\'")
+                        # 使用正则替换，确保只替换独立的鸟名
+                        # 前后不能是汉字、字母、数字，避免误匹配（如"姬地鸠"不应匹配"戈氏姬地鸠"中的部分）
+                        # 同时避免替换HTML标签内的内容
+                        pattern = r'(?<![\u4e00-\u9fa5a-zA-Z0-9>])(?<!</a>)' + re.escape(bird_name) + r'(?![\u4e00-\u9fa5a-zA-Z0-9<])'
+                        # 转义单引号和双引号，避免JavaScript字符串错误
+                        escaped_bird_name = bird_name.replace("'", "\\'").replace('"', '\\"')
                         link = f'<a href="javascript:void(0)" class="bird-name-link" onclick="showBirdInfo(\'{escaped_bird_name}\')">{bird_name}</a>'
                         modified_text = re.sub(pattern, link, modified_text, count=1)  # 每个鸟名只替换第一次出现
 
                 # 如果文本被修改，替换原节点
                 if modified_text != text:
-                    # 使用 BeautifulSoup 解析修改后的 HTML
+                    # 使用 BeautifulSoup 解析修改后的 HTML，保留所有内容
+                    from bs4 import NavigableString
                     new_soup = BeautifulSoup(modified_text, 'html.parser')
-                    text_node.replace_with(new_soup)
+                    # 获取解析后的所有子节点（包括文本和标签）
+                    replacement_nodes = list(new_soup.children)
+                    if replacement_nodes:
+                        # 先插入第一个节点替换当前节点
+                        first_node = replacement_nodes[0]
+                        text_node.replace_with(first_node)
+                        # 然后在第一个节点后面插入其余节点
+                        for node in replacement_nodes[1:]:
+                            first_node.insert_after(node)
+                            first_node = node
 
         return str(soup)
     except Exception as e:
