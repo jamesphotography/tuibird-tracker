@@ -19,7 +19,20 @@
       "Bash(python3:*)",
       "Bash(git init:*)",
       "Bash(git lfs:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git remote add:*)",
+      "Bash(git branch:*)",
+      "Bash(git push:*)",
+      "Bash(.venv/bin/pip install:*)",
+      "Bash(.venv/bin/python:*)",
+      "WebFetch(domain:documenter.getpostman.com)",
+      "WebSearch",
+      "Read(//tmp/**)",
+      "Bash(lsof:*)",
+      "Bash(xargs kill:*)",
+      "Bash(.venv/bin/pip:*)",
+      "Bash(git log:*)"
     ],
     "deny": [],
     "ask": []

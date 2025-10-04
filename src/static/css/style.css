@@ -1,22 +1,22 @@
 /* ==================== 全局样式 ==================== */
 :root {
-    --primary-color: #2D5016;      /* 森林绿 */
-    --secondary-color: #4A90E2;    /* 天空蓝 */
-    --accent-color: #FF8C42;       /* 鸟橙色 */
-    --background-color: #F5F5DC;   /* 浅米色 */
+    --primary-color: #2C3E50;      /* 深灰蓝 - 沉稳专业 */
+    --secondary-color: #546E7A;    /* 中性灰蓝 - 优雅内敛 */
+    --accent-color: #66BB6A;       /* 柔和绿 - 自然清新 */
+    --background-color: #F5F7FA;   /* 极浅灰 - 高级背景 */
     --card-bg: #FFFFFF;
-    --text-dark: #2C3E50;
-    --text-light: #7F8C8D;
-    --border-color: #E0E0E0;
-    --success-color: #27AE60;
-    --warning-color: #F39C12;
-    --danger-color: #E74C3C;
+    --text-dark: #263238;          /* 炭黑 - 高级质感 */
+    --text-light: #90A4AE;         /* 柔灰 - 低调优雅 */
+    --border-color: #ECEFF1;       /* 浅灰边框 - 精致分隔 */
+    --success-color: #66BB6A;      /* 成功绿 */
+    --warning-color: #FFA726;      /* 警告橙 */
+    --danger-color: #EF5350;       /* 错误红 */
 
-    --shadow-sm: 0 2px 4px rgba(0,0,0,0.1);
-    --shadow-md: 0 4px 6px rgba(0,0,0,0.1);
-    --shadow-lg: 0 10px 25px rgba(0,0,0,0.15);
+    --shadow-sm: 0 2px 8px rgba(0,0,0,0.04);
+    --shadow-md: 0 4px 12px rgba(0,0,0,0.08);
+    --shadow-lg: 0 8px 24px rgba(0,0,0,0.12);
 
-    --transition: all 0.3s ease;
+    --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 * {
@@ -47,13 +47,15 @@ a:hover {
 
 /* ==================== 导航栏 ==================== */
 .navbar {
-    background: var(--primary-color);
+    background: rgba(44, 62, 80, 0.98);
+    backdrop-filter: blur(20px);
     color: white;
     padding: 1rem 0;
-    box-shadow: var(--shadow-md);
+    box-shadow: 0 2px 20px rgba(0,0,0,0.1);
     position: sticky;
     top: 0;
     z-index: 1000;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .nav-container {
@@ -91,22 +93,35 @@ a:hover {
 }
 
 .nav-link {
-    color: white;
+    color: rgba(255, 255, 255, 0.85);
     padding: 0.5rem 1rem;
-    border-radius: 8px;
+    border-radius: 10px;
     display: flex;
     align-items: center;
     gap: 0.5rem;
     transition: var(--transition);
+    position: relative;
 }
 
 .nav-link:hover {
-    background: rgba(255,255,255,0.1);
+    background: rgba(102, 187, 106, 0.15);
     color: white;
 }
 
 .nav-link.active {
-    background: rgba(255,255,255,0.2);
+    background: linear-gradient(135deg, rgba(102, 187, 106, 0.2) 0%, rgba(84, 110, 122, 0.2) 100%);
+    color: white;
+}
+
+.nav-link.active::before {
+    content: '';
+    position: absolute;
+    bottom: -1rem;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 40%;
+    height: 2px;
+    background: var(--accent-color);
 }
 
 /* ==================== 容器 ==================== */
@@ -121,11 +136,24 @@ a:hover {
 .hero-section {
     text-align: center;
     padding: 4rem 2rem;
-    background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
-    border-radius: 16px;
+    background: linear-gradient(135deg, #37474F 0%, #546E7A 50%, #607D8B 100%);
+    border-radius: 20px;
     color: white;
     margin-bottom: 3rem;
     box-shadow: var(--shadow-lg);
+    position: relative;
+    overflow: hidden;
+}
+
+.hero-section::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: radial-gradient(circle at 30% 50%, rgba(102, 187, 106, 0.1) 0%, transparent 50%);
+    pointer-events: none;
 }
 
 .hero-title {
@@ -135,12 +163,16 @@ a:hover {
     align-items: center;
     justify-content: center;
     gap: 1rem;
+    position: relative;
+    z-index: 1;
 }
 
 .hero-subtitle {
     font-size: 1.3rem;
     margin-bottom: 2rem;
     opacity: 0.95;
+    position: relative;
+    z-index: 1;
 }
 
 .hero-buttons {
@@ -148,6 +180,8 @@ a:hover {
     gap: 1rem;
     justify-content: center;
     flex-wrap: wrap;
+    position: relative;
+    z-index: 1;
 }
 
 /* ==================== 按钮 ==================== */
@@ -168,24 +202,27 @@ a:hover {
 .btn-primary {
     background: var(--accent-color);
     color: white;
+    box-shadow: 0 2px 8px rgba(102, 187, 106, 0.3);
 }
 
 .btn-primary:hover {
-    background: #E67A35;
+    background: #57AB5A;
     transform: translateY(-2px);
-    box-shadow: var(--shadow-md);
+    box-shadow: 0 4px 16px rgba(102, 187, 106, 0.4);
     color: white;
 }
 
 .btn-secondary {
-    background: white;
+    background: rgba(255, 255, 255, 0.95);
     color: var(--primary-color);
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    backdrop-filter: blur(10px);
 }
 
 .btn-secondary:hover {
-    background: #f0f0f0;
+    background: white;
     transform: translateY(-2px);
-    box-shadow: var(--shadow-md);
+    box-shadow: 0 4px 16px rgba(255, 255, 255, 0.3);
     color: var(--primary-color);
 }
 
@@ -232,27 +269,30 @@ a:hover {
 .feature-card {
     background: var(--card-bg);
     padding: 2rem;
-    border-radius: 12px;
+    border-radius: 16px;
     box-shadow: var(--shadow-sm);
     transition: var(--transition);
+    border: 1px solid var(--border-color);
 }
 
 .feature-card:hover {
     transform: translateY(-5px);
     box-shadow: var(--shadow-lg);
+    border-color: rgba(102, 187, 106, 0.2);
 }
 
 .feature-icon {
     width: 60px;
     height: 60px;
-    background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+    background: linear-gradient(135deg, #546E7A 0%, #66BB6A 100%);
     color: white;
-    border-radius: 50%;
+    border-radius: 16px;
     display: flex;
     align-items: center;
     justify-content: center;
     font-size: 1.8rem;
     margin-bottom: 1rem;
+    box-shadow: 0 4px 12px rgba(84, 110, 122, 0.2);
 }
 
 .feature-card h3 {
@@ -282,16 +322,27 @@ a:hover {
 .stat-card {
     background: var(--card-bg);
     padding: 1.2rem 1rem;
-    border-radius: 12px;
+    border-radius: 16px;
     text-align: center;
     box-shadow: var(--shadow-sm);
     min-width: 0;
+    border: 1px solid var(--border-color);
+    transition: var(--transition);
+}
+
+.stat-card:hover {
+    transform: translateY(-3px);
+    box-shadow: var(--shadow-md);
+    border-color: rgba(102, 187, 106, 0.3);
 }
 
 .stat-number {
     font-size: 2rem;
-    font-weight: bold;
-    color: var(--accent-color);
+    font-weight: 700;
+    background: linear-gradient(135deg, #546E7A 0%, #66BB6A 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
     margin-bottom: 0.5rem;
 }
 
@@ -314,25 +365,33 @@ a:hover {
 .step {
     background: var(--card-bg);
     padding: 1.2rem 1.5rem;
-    border-radius: 12px;
+    border-radius: 16px;
     box-shadow: var(--shadow-sm);
     max-width: 220px;
     min-width: 200px;
     text-align: center;
+    border: 1px solid var(--border-color);
+    transition: var(--transition);
+}
+
+.step:hover {
+    transform: translateY(-3px);
+    box-shadow: var(--shadow-md);
 }
 
 .step-number {
     width: 40px;
     height: 40px;
-    background: var(--accent-color);
+    background: linear-gradient(135deg, #546E7A 0%, #66BB6A 100%);
     color: white;
-    border-radius: 50%;
+    border-radius: 12px;
     display: flex;
     align-items: center;
     justify-content: center;
     font-size: 1.2rem;
     font-weight: bold;
     margin: 0 auto 0.75rem;
+    box-shadow: 0 2px 8px rgba(84, 110, 122, 0.3);
 }
 
 .step h3 {
@@ -367,17 +426,23 @@ a:hover {
 
 .form-control {
     width: 100%;
-    padding: 0.75rem;
+    padding: 0.75rem 1rem;
     border: 2px solid var(--border-color);
-    border-radius: 8px;
+    border-radius: 10px;
     font-size: 1rem;
     transition: var(--transition);
+    background: var(--card-bg);
 }
 
 .form-control:focus {
     outline: none;
+    border-color: var(--accent-color);
+    box-shadow: 0 0 0 4px rgba(102, 187, 106, 0.1);
+    background: white;
+}
+
+.form-control:hover {
     border-color: var(--secondary-color);
-    box-shadow: 0 0 0 3px rgba(74, 144, 226, 0.1);
 }
 
 select.form-control {
@@ -386,11 +451,12 @@ select.form-control {
 
 /* ==================== 页脚 ==================== */
 .footer {
-    background: var(--primary-color);
-    color: white;
+    background: linear-gradient(135deg, #263238 0%, #37474F 100%);
+    color: rgba(255, 255, 255, 0.85);
     padding: 2rem 0;
     text-align: center;
     margin-top: auto;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .footer-container {
@@ -405,10 +471,12 @@ select.form-control {
 
 .footer a {
     color: var(--accent-color);
+    transition: var(--transition);
 }
 
 .footer a:hover {
     color: white;
+    text-decoration: underline;
 }
 
 /* ==================== 响应式设计 ==================== */
