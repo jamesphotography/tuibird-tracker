@@ -1502,7 +1502,12 @@ def api_get_checklist(sub_id):
         code_to_full_name_map = db.get_code_to_full_name_map()
 
         # 提取清单信息
-        loc_name = checklist.get('loc', {}).get('name', '未知地点')
+        # eBird API 的 checklist view 接口返回字段：
+        # - locName: 地点名称（字符串）
+        # - obsDt: 观测日期时间
+        # - numSpecies: 物种数量
+        # - obs: 观测记录数组
+        loc_name = checklist.get('locName', '未知地点')
         obs_date = checklist.get('obsDt', '未知日期')
         num_species = checklist.get('numSpecies', 0)
 
