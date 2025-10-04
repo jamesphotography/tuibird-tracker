@@ -1486,17 +1486,19 @@ def api_geocode():
 def api_get_checklist(sub_id):
     """获取观测清单详情（中文格式）"""
     try:
-        if not api_client:
-            return jsonify({'error': 'API客户端未初始化'}), 500
+        # 从请求头获取 API Key 并初始化客户端
+        client = get_api_client_from_request()
+        if not client:
+            return jsonify({'error': 'API Key 未配置，请前往设置页面配置'}), 401
 
         # 获取清单详情
-        checklist = api_client.get_checklist_details(sub_id)
+        checklist = client.get_checklist_details(sub_id)
 
         if not checklist:
             return jsonify({'error': '无法获取清单详情'}), 404
 
         # 获取物种名称映射
-        db = bird_db
+        db = init_database()
         code_to_full_name_map = db.get_code_to_full_name_map()
 
         # 提取清单信息
