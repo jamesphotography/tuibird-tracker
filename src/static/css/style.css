@@ -124,6 +124,150 @@ a:hover {
     background: var(--accent-color);
 }
 
+/* 汉堡菜单按钮（默认隐藏） */
+.nav-toggle {
+    display: none;
+    flex-direction: column;
+    gap: 4px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0.5rem;
+    z-index: 1001;
+}
+
+.nav-toggle span {
+    width: 25px;
+    height: 3px;
+    background: white;
+    border-radius: 2px;
+    transition: all 0.3s ease;
+}
+
+.nav-toggle.active span:nth-child(1) {
+    transform: rotate(45deg) translate(7px, 7px);
+}
+
+.nav-toggle.active span:nth-child(2) {
+    opacity: 0;
+}
+
+.nav-toggle.active span:nth-child(3) {
+    transform: rotate(-45deg) translate(7px, -7px);
+}
+
+/* ==================== 移动端响应式设计 ==================== */
+@media (max-width: 768px) {
+    /* 显示汉堡菜单按钮 */
+    .nav-toggle {
+        display: flex;
+    }
+
+    /* 导航菜单移动端样式 */
+    .nav-menu {
+        position: fixed;
+        top: 60px;
+        right: -100%;
+        width: 250px;
+        height: calc(100vh - 60px);
+        background: rgba(44, 62, 80, 0.98);
+        backdrop-filter: blur(20px);
+        flex-direction: column;
+        gap: 0;
+        padding: 1rem 0;
+        box-shadow: -2px 0 20px rgba(0, 0, 0, 0.3);
+        transition: right 0.3s ease;
+        overflow-y: auto;
+    }
+
+    .nav-menu.active {
+        right: 0;
+    }
+
+    .nav-menu li {
+        width: 100%;
+    }
+
+    .nav-link {
+        width: 100%;
+        padding: 1rem 1.5rem;
+        border-radius: 0;
+        justify-content: flex-start;
+    }
+
+    .nav-link.active::before {
+        display: none;
+    }
+
+    .nav-link.active {
+        background: rgba(102, 187, 106, 0.2);
+        border-left: 3px solid var(--accent-color);
+    }
+
+    /* 容器移动端优化 */
+    .container {
+        padding: 1rem;
+    }
+
+    .nav-container {
+        padding: 0 1rem;
+    }
+
+    /* 主页英雄区移动端优化 */
+    .hero-section {
+        padding: 2rem 1rem;
+    }
+
+    .hero-section h1 {
+        font-size: 1.8rem;
+    }
+
+    /* 卡片网格移动端优化 */
+    .features-grid {
+        grid-template-columns: 1fr;
+        gap: 1rem;
+    }
+
+    /* 页脚移动端优化 */
+    .footer {
+        padding: 1.5rem 0;
+        font-size: 0.9rem;
+    }
+
+    /* 表单移动端优化 */
+    .form-group input,
+    .form-group select,
+    .form-group textarea {
+        font-size: 16px; /* 防止 iOS 自动缩放 */
+    }
+
+    .btn {
+        padding: 0.75rem 1.25rem;
+        font-size: 1rem;
+        min-height: 44px; /* iOS 最小可点击区域 */
+    }
+
+    /* 卡片移动端优化 */
+    .card {
+        padding: 1rem;
+    }
+
+    /* 表格移动端优化 */
+    table {
+        font-size: 0.9rem;
+    }
+
+    /* 模态框移动端优化 */
+    .bird-modal-content {
+        margin: 10% 5%;
+        max-width: 95%;
+    }
+
+    .bird-modal-body {
+        padding: 1rem;
+    }
+}
+
 /* ==================== 容器 ==================== */
 .container {
     max-width: 1200px;

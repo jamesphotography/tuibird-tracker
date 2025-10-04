@@ -14,6 +14,12 @@ import markdown
 from geopy.geocoders import Nominatim
 from geopy.exc import GeocoderTimedOut, GeocoderServiceError
 import time
+import secrets
+from flask_wtf.csrf import CSRFProtect
+
+# 加载环境变量
+from dotenv import load_dotenv
+load_dotenv()
 
 # 导入现有模块
 from config import VERSION, BUILD_DATE, ConfigManager, DB_FILE, AUSTRALIA_STATES, get_resource_path
@@ -21,16 +27,26 @@ from database import BirdDatabase
 from api_client import EBirdAPIClient, get_api_key_with_validation
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'tuibird-tracker-secret-key'
+
+# 安全配置：从环境变量读取，如果不存在则生成随机值
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY') or secrets.token_hex(32)
 app.config['JSON_AS_ASCII'] = False  # 支持中文 JSON
+app.config['WTF_CSRF_TIME_LIMIT'] = None  # CSRF token 不过期
+app.config['WTF_CSRF_HEADERS'] = ['X-CSRFToken']  # 接受来自 X-CSRFToken 请求头的 token
+
+# 启用 CSRF 保护
+csrf = CSRFProtect(app)
 
 # 全局配置
 config_manager = ConfigManager()
 bird_db = None
 api_client = None
 
-# 匿名用户共享的 API Key（请妥善保管，不要泄露）
-ANONYMOUS_API_KEY = '60nan25sogpo'
+# 匿名用户共享的 API Key（从环境变量读取）
+ANONYMOUS_API_KEY = os.environ.get('ANONYMOUS_API_KEY', '')
+if not ANONYMOUS_API_KEY:
+    print("警告: ANONYMOUS_API_KEY 未配置，访客模式将不可用")
+    print("请在 .env 文件中配置 ANONYMOUS_API_KEY=your_key")
 
 # 匿名用户限流配置
 ANONYMOUS_LIMITS = {
@@ -42,30 +58,126 @@ ANONYMOUS_LIMITS = {
 }
 
 
+class APICache:
+    """简单的 API 响应缓存（内存缓存 + TTL，线程安全）"""
+
+    def __init__(self, ttl=300, max_size=1000):
+        """
+        初始化缓存
+        :param ttl: 缓存有效期（秒），默认5分钟
+        :param max_size: 最大缓存条目数，默认1000条
+        """
+        import threading
+        from collections import OrderedDict
+        self.cache = OrderedDict()  # 保持插入顺序，支持LRU
+        self.ttl = ttl
+        self.max_size = max_size
+        self._lock = threading.RLock()  # 可重入锁
+
+    def get(self, key):
+        """获取缓存（线程安全）"""
+        with self._lock:
+            if key in self.cache:
+                data, timestamp = self.cache[key]
+                # 检查是否过期
+                if time.time() - timestamp < self.ttl:
+                    # LRU：移到末尾（最近使用）
+                    self.cache.move_to_end(key)
+                    return data
+                else:
+                    # 清除过期缓存
+                    del self.cache[key]
+            return None
+
+    def set(self, key, value):
+        """设置缓存（线程安全，支持LRU淘汰）"""
+        with self._lock:
+            # 如果已存在，先删除（移到末尾）
+            if key in self.cache:
+                del self.cache[key]
+
+            # 如果超过最大容量，删除最旧的条目
+            if len(self.cache) >= self.max_size:
+                # 删除最早插入的条目（FIFO/LRU）
+                self.cache.popitem(last=False)
+
+            self.cache[key] = (value, time.time())
+
+    def clear(self):
+        """清空所有缓存（线程安全）"""
+        with self._lock:
+            self.cache.clear()
+
+    def cleanup(self):
+        """清理过期缓存（线程安全）"""
+        with self._lock:
+            current_time = time.time()
+            # 创建副本进行迭代，避免迭代时修改
+            expired_keys = [
+                key for key, (_, timestamp) in list(self.cache.items())
+                if current_time - timestamp >= self.ttl
+            ]
+            for key in expired_keys:
+                del self.cache[key]
+
+
+# 创建全局 API 缓存实例
+api_cache = APICache(ttl=300)  # 5分钟缓存
+
+# 创建全局 Geolocator 实例（避免频繁初始化导致限流）
+_geolocator = None
+
+def get_geolocator():
+    """获取全局 Geolocator 单例"""
+    global _geolocator
+    if _geolocator is None:
+        _geolocator = Nominatim(user_agent="tuibird_tracker")
+    return _geolocator
+
+
 class RateLimiter:
-    """简单的速率限制器（基于文件存储）"""
+    """简单的速率限制器（基于文件存储，线程安全）"""
 
     def __init__(self):
+        import threading
         self.storage_file = get_resource_path('rate_limit.json')
-        self.data = self._load_data()
+        self.data = {}
+        self._lock = threading.Lock()  # 线程锁
 
     def _load_data(self):
-        """加载限流数据"""
-        if os.path.exists(self.storage_file):
+        """加载限流数据（带线程锁）"""
+        with self._lock:
+            if not os.path.exists(self.storage_file):
+                return {}
+
             try:
                 with open(self.storage_file, 'r') as f:
                     return json.load(f)
             except Exception as e:
                 print(f"加载限流数据失败: {e}")
-        return {}
+                return {}
 
     def _save_data(self):
-        """保存限流数据"""
-        try:
-            with open(self.storage_file, 'w') as f:
-                json.dump(self.data, f)
-        except Exception as e:
-            print(f"保存限流数据失败: {e}")
+        """保存限流数据（原子写入，防止文件损坏）"""
+        with self._lock:
+            try:
+                # 使用临时文件 + 原子替换，防止写入中断导致文件损坏
+                temp_file = self.storage_file + '.tmp'
+                with open(temp_file, 'w') as f:
+                    json.dump(self.data, f)
+                    f.flush()
+                    os.fsync(f.fileno())  # 确保写入磁盘
+
+                # 原子替换（在所有平台都是原子操作）
+                os.replace(temp_file, self.storage_file)
+            except Exception as e:
+                print(f"保存限流数据失败: {e}")
+                # 清理临时文件
+                if os.path.exists(temp_file):
+                    try:
+                        os.remove(temp_file)
+                    except:
+                        pass
 
     def _clean_old_data(self):
         """清理过期数据（超过24小时）"""
@@ -81,7 +193,9 @@ class RateLimiter:
             del self.data[ip]
 
     def check_limit(self, ip_address):
-        """检查IP是否超过限制"""
+        """检查IP是否超过限制（支持多进程）"""
+        # 每次都重新加载数据（支持多进程环境）
+        self.data = self._load_data()
         self._clean_old_data()
 
         now = time.time()
@@ -108,11 +222,16 @@ class RateLimiter:
         }
 
     def record_request(self, ip_address):
-        """记录一次请求"""
+        """记录一次请求（原子操作，支持多进程）"""
+        # 重新加载最新数据
+        self.data = self._load_data()
+
         if ip_address not in self.data:
             self.data[ip_address] = {'requests': []}
 
         self.data[ip_address]['requests'].append(time.time())
+
+        # 立即保存（原子操作）
         self._save_data()
 
 
@@ -141,15 +260,20 @@ def init_api_client():
 
 def get_api_key_from_request():
     """
-    从请求头中获取 API Key（客户端本地存储模式）
-    优先级：客户端 API Key > 服务器配置 > 匿名共享 Key
+    从请求中获取 API Key
+    优先级：Cookie > 请求头 > 服务器配置 > 匿名共享 Key
     """
-    # 优先从请求头获取客户端 API Key
+    # 优先从 Cookie 获取（支持页面导航）
+    cookie_api_key = request.cookies.get('ebird_api_key')
+    if cookie_api_key:
+        return cookie_api_key
+
+    # 其次从请求头获取（支持 AJAX 请求）
     client_api_key = request.headers.get('X-eBird-API-Key')
     if client_api_key:
         return client_api_key
 
-    # 其次从服务器配置获取（向后兼容）
+    # 再从服务器配置获取（向后兼容）
     server_key = config_manager.get_api_key()
     if server_key:
         return server_key
@@ -370,13 +494,14 @@ def settings():
 
 @app.route('/reports')
 def reports():
-    """历史报告列表"""
+    """历史报告列表（仅显示当前用户的报告）"""
     # 获取当前用户的专属目录
     api_key = get_api_key_from_request()
     user_output_dir = get_user_output_dir(api_key)
 
     reports_by_date = {}  # 按日期分组
 
+    # 仅扫描用户专属目录
     if os.path.exists(user_output_dir):
         for date_folder in sorted(os.listdir(user_output_dir), reverse=True):
             date_path = os.path.join(user_output_dir, date_folder)
@@ -469,7 +594,17 @@ def view_result(report_path):
         # 获取当前用户的专属目录
         api_key = get_api_key_from_request()
         user_output_dir = get_user_output_dir(api_key)
+
+        # 仅访问用户专属目录
         report_file = os.path.join(user_output_dir, report_path)
+
+        # 安全检查：确保在用户目录内
+        report_file_real = os.path.realpath(report_file)
+        user_output_dir_real = os.path.realpath(user_output_dir)
+        if not report_file_real.startswith(user_output_dir_real):
+            return render_template('error.html',
+                                 error_message='非法访问路径',
+                                 version=VERSION), 403
 
         if not os.path.exists(report_file):
             return render_template('error.html',
@@ -535,6 +670,108 @@ def api_search_species():
 
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+
+def parse_dms_coordinate(dms_str):
+    """
+    解析度分秒格式的GPS坐标
+    支持格式：
+    - 34°20'29.5"S 139°29'24.3"E
+    - 34° 20' 29.5" S, 139° 29' 24.3" E
+    - 34°20'29.5"S, 139°29'24.3"E
+
+    返回: (latitude, longitude) 十进制度数格式
+    """
+    import re
+
+    # 移除所有空格
+    dms_str = dms_str.strip()
+
+    # 正则表达式匹配度分秒格式
+    # 格式: 度°分'秒"方向
+    pattern = r"(\d+)[°\s]+(\d+)['\s]+([0-9.]+)[\"'\s]*([NSEW])"
+
+    matches = re.findall(pattern, dms_str.upper())
+
+    if len(matches) < 2:
+        return None, None
+
+    # 解析纬度和经度
+    coords = []
+    for match in matches[:2]:  # 只取前两个（纬度和经度）
+        degrees = float(match[0])
+        minutes = float(match[1])
+        seconds = float(match[2])
+        direction = match[3]
+
+        # 转换为十进制度数
+        decimal = degrees + minutes / 60 + seconds / 3600
+
+        # 根据方向调整符号
+        if direction in ['S', 'W']:
+            decimal = -decimal
+
+        coords.append(decimal)
+
+    if len(coords) == 2:
+        return coords[0], coords[1]  # (lat, lng)
+
+    return None, None
+
+
+def check_checklist_for_species(client, sub_id, target_species_set, first_species_obs):
+    """
+    检查清单是否包含所有目标物种（公共函数）
+
+    :param client: eBird API 客户端
+    :param sub_id: 清单ID
+    :param target_species_set: 目标物种代码集合
+    :param first_species_obs: 第一个物种的观测记录列表
+    :return: 匹配的观测记录列表，如果不匹配则返回空列表
+    """
+    try:
+        checklist = client.get_checklist_details(sub_id)
+        if not checklist or 'obs' not in checklist:
+            return []
+
+        # 检查清单中是否包含所有目标物种
+        found_species = set()
+        for obs_item in checklist['obs']:
+            species_code = obs_item.get('speciesCode')
+            if species_code in target_species_set:
+                found_species.add(species_code)
+
+        # 如果不包含所有目标物种，返回空列表
+        if found_species != target_species_set:
+            return []
+
+        # 构建索引以优化查找（避免重复遍历）
+        sub_id_to_obs = {}
+        for orig_obs in first_species_obs:
+            if orig_obs.get('subId') == sub_id:
+                sub_id_to_obs = orig_obs
+                break
+
+        if not sub_id_to_obs:
+            return []
+
+        # 构造匹配的观测记录
+        matching_obs = []
+        for obs_item in checklist['obs']:
+            species_code = obs_item.get('speciesCode')
+            if species_code in target_species_set:
+                # 复制观测信息并更新物种相关字段
+                new_obs = sub_id_to_obs.copy()
+                new_obs['speciesCode'] = species_code
+                new_obs['comName'] = obs_item.get('comName') or species_code or 'Unknown'
+                new_obs['howMany'] = obs_item.get('howMany') or 'X'
+                matching_obs.append(new_obs)
+
+        return matching_obs
+
+    except Exception as e:
+        print(f"检查清单失败 ({sub_id}): {e}")
+        return []
 
 
 @app.route('/api/track', methods=['POST'])
@@ -616,16 +853,24 @@ def api_track():
 
             # 尝试解析为坐标
             location_name = None
-            from geopy.geocoders import Nominatim
-            geolocator = Nominatim(user_agent="tuibird_tracker")
+            geolocator = get_geolocator()
+            lat = None
+            lng = None
 
             try:
-                # 支持多种格式：-12.4634, 130.8456 或 -12.4634 130.8456
-                coords = gps_location.replace(',', ' ').split()
-                if len(coords) == 2:
-                    lat = float(coords[0])
-                    lng = float(coords[1])
+                # 优先尝试度分秒格式
+                lat_dms, lng_dms = parse_dms_coordinate(gps_location)
+                if lat_dms is not None and lng_dms is not None:
+                    lat, lng = lat_dms, lng_dms
+                else:
+                    # 支持十进制格式：-12.4634, 130.8456 或 -12.4634 130.8456
+                    coords = gps_location.replace(',', ' ').split()
+                    if len(coords) == 2:
+                        lat = float(coords[0])
+                        lng = float(coords[1])
 
+                # 如果成功解析坐标
+                if lat is not None and lng is not None:
                     # 反向地理编码：根据坐标查询地点名称
                     try:
                         reverse_location = geolocator.reverse(f"{lat}, {lng}", timeout=10, language='zh')
@@ -684,44 +929,14 @@ def api_track():
                         if sub_id:
                             sub_ids_to_check.add(sub_id)
 
-                    # 并发获取清单详情并过滤
+                    # 并发获取清单详情并过滤（使用公共函数）
                     from concurrent.futures import ThreadPoolExecutor, as_completed
 
-                    def check_checklist(sub_id):
-                        try:
-                            checklist = client.get_checklist_details(sub_id)
-                            if checklist and 'obs' in checklist:
-                                # 检查清单中是否包含所有目标物种
-                                found_species = set()
-                                for obs_item in checklist['obs']:
-                                    species_code = obs_item.get('speciesCode')
-                                    if species_code in target_species_set:
-                                        found_species.add(species_code)
-
-                                # 如果包含所有目标物种，返回该清单中所有目标物种的观测
-                                if found_species == target_species_set:
-                                    matching_obs = []
-                                    for obs_item in checklist['obs']:
-                                        if obs_item.get('speciesCode') in target_species_set:
-                                            # 从原始观测中找到对应的完整信息
-                                            for orig_obs in first_species_obs:
-                                                if orig_obs.get('subId') == sub_id:
-                                                    # 复制观测信息并更新物种相关字段
-                                                    new_obs = orig_obs.copy()
-                                                    species_code = obs_item.get('speciesCode')
-                                                    new_obs['speciesCode'] = species_code
-                                                    new_obs['comName'] = obs_item.get('comName') or species_code or 'Unknown'
-                                                    new_obs['howMany'] = obs_item.get('howMany') or 'X'
-                                                    matching_obs.append(new_obs)
-                                                    break
-                                    return matching_obs
-                        except Exception as e:
-                            print(f"检查清单失败 ({sub_id}): {e}")
-                        return []
-
-                    # 使用线程池并发检查清单
                     with ThreadPoolExecutor(max_workers=10) as executor:
-                        futures = {executor.submit(check_checklist, sub_id): sub_id for sub_id in sub_ids_to_check}
+                        futures = {
+                            executor.submit(check_checklist_for_species, client, sub_id, target_species_set, first_species_obs): sub_id
+                            for sub_id in sub_ids_to_check
+                        }
                         for future in as_completed(futures):
                             matching_obs = future.result()
                             if matching_obs:
@@ -753,7 +968,7 @@ def api_track():
                 )
 
                 if first_species_obs:
-                    # 收集清单ID并过滤（同GPS模式逻辑）
+                    # 收集清单ID并过滤（使用公共函数）
                     sub_ids_to_check = set()
                     for obs in first_species_obs:
                         sub_id = obs.get('subId')
@@ -762,36 +977,11 @@ def api_track():
 
                     from concurrent.futures import ThreadPoolExecutor, as_completed
 
-                    def check_checklist_region(sub_id):
-                        try:
-                            checklist = client.get_checklist_details(sub_id)
-                            if checklist and 'obs' in checklist:
-                                found_species = set()
-                                for obs_item in checklist['obs']:
-                                    species_code = obs_item.get('speciesCode')
-                                    if species_code in target_species_set:
-                                        found_species.add(species_code)
-
-                                if found_species == target_species_set:
-                                    matching_obs = []
-                                    for obs_item in checklist['obs']:
-                                        if obs_item.get('speciesCode') in target_species_set:
-                                            for orig_obs in first_species_obs:
-                                                if orig_obs.get('subId') == sub_id:
-                                                    new_obs = orig_obs.copy()
-                                                    species_code = obs_item.get('speciesCode')
-                                                    new_obs['speciesCode'] = species_code
-                                                    new_obs['comName'] = obs_item.get('comName') or species_code or 'Unknown'
-                                                    new_obs['howMany'] = obs_item.get('howMany') or 'X'
-                                                    matching_obs.append(new_obs)
-                                                    break
-                                    return matching_obs
-                        except Exception as e:
-                            print(f"检查清单失败 ({sub_id}): {e}")
-                        return []
-
                     with ThreadPoolExecutor(max_workers=10) as executor:
-                        futures = {executor.submit(check_checklist_region, sub_id): sub_id for sub_id in sub_ids_to_check}
+                        futures = {
+                            executor.submit(check_checklist_for_species, client, sub_id, target_species_set, first_species_obs): sub_id
+                            for sub_id in sub_ids_to_check
+                        }
                         for future in as_completed(futures):
                             matching_obs = future.result()
                             if matching_obs:
@@ -1381,8 +1571,18 @@ def api_config_api_key():
 def api_get_report(report_path):
     """获取报告内容"""
     try:
-        output_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'output')
-        report_file = os.path.join(output_dir, report_path)
+        # 获取当前用户的专属目录
+        api_key = get_api_key_from_request()
+        user_output_dir = get_user_output_dir(api_key)
+
+        # 仅访问用户专属目录
+        report_file = os.path.join(user_output_dir, report_path)
+
+        # 安全检查：确保在用户目录内
+        report_file_real = os.path.realpath(report_file)
+        user_output_dir_real = os.path.realpath(user_output_dir)
+        if not report_file_real.startswith(user_output_dir_real):
+            return jsonify({'error': '非法访问路径'}), 403
 
         if not os.path.exists(report_file):
             return jsonify({'error': '报告文件不存在'}), 404
@@ -1436,7 +1636,7 @@ def api_geocode():
             return jsonify({'error': '地点名称不能为空'}), 400
 
         # 使用 Nominatim 地理编码服务
-        geolocator = Nominatim(user_agent="tuibird_tracker")
+        geolocator = get_geolocator()
 
         try:
             # 优先在澳大利亚范围内搜索
@@ -1484,8 +1684,14 @@ def api_geocode():
 
 @app.route('/api/checklist/<sub_id>')
 def api_get_checklist(sub_id):
-    """获取观测清单详情（中文格式）"""
+    """获取观测清单详情（中文格式，带缓存）"""
     try:
+        # 检查缓存
+        cache_key = f'checklist:{sub_id}'
+        cached_data = api_cache.get(cache_key)
+        if cached_data:
+            return jsonify(cached_data)
+
         # 从请求头获取 API Key 并初始化客户端
         client = get_api_client_from_request()
         if not client:
@@ -1534,14 +1740,19 @@ def api_get_checklist(sub_id):
                     'count': obs.get('howManyStr', 'X')
                 })
 
-        return jsonify({
+        response_data = {
             'success': True,
             'sub_id': sub_id,
             'location': loc_name,
             'date': obs_date,
             'num_species': num_species,
             'observations': observations
-        })
+        }
+
+        # 缓存结果
+        api_cache.set(cache_key, response_data)
+
+        return jsonify(response_data)
 
     except Exception as e:
         import traceback
@@ -1633,13 +1844,25 @@ def api_get_hotspot_observations(loc_id):
 
 @app.route('/route-result/<path:result_path>')
 def view_route_result(result_path):
-    """查看路线热点结果"""
+    """查看路线热点结果（带路径安全检查）"""
     try:
-        output_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'output')
-        file_path = os.path.join(output_dir, result_path)
+        # 使用用户专属目录（而非全局 output 目录）
+        api_key = get_api_key_from_request()
+        user_output_dir = get_user_output_dir(api_key)
+        file_path = os.path.join(user_output_dir, result_path)
+
+        # 安全检查：防止路径遍历攻击
+        file_path_real = os.path.realpath(file_path)
+        user_output_dir_real = os.path.realpath(user_output_dir)
+        if not file_path_real.startswith(user_output_dir_real):
+            return render_template('error.html',
+                                 error_message='非法访问路径',
+                                 version=VERSION), 403
 
         if not os.path.exists(file_path):
-            return f'<h1>错误</h1><p>路线结果文件不存在</p><a href="/reports">返回历史报告</a>', 404
+            return render_template('error.html',
+                                 error_message='路线结果文件不存在',
+                                 version=VERSION), 404
 
         # 读取 JSON 文件
         with open(file_path, 'r', encoding='utf-8') as f:
@@ -1673,10 +1896,18 @@ def view_route_result(result_path):
 
 @app.route('/api/route-result/<path:result_path>')
 def api_get_route_result(result_path):
-    """获取路线热点结果"""
+    """获取路线热点结果（带路径安全检查）"""
     try:
-        output_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'output')
-        file_path = os.path.join(output_dir, result_path)
+        # 使用用户专属目录
+        api_key = get_api_key_from_request()
+        user_output_dir = get_user_output_dir(api_key)
+        file_path = os.path.join(user_output_dir, result_path)
+
+        # 安全检查：防止路径遍历攻击
+        file_path_real = os.path.realpath(file_path)
+        user_output_dir_real = os.path.realpath(user_output_dir)
+        if not file_path_real.startswith(user_output_dir_real):
+            return jsonify({'error': '非法访问路径'}), 403
 
         if not os.path.exists(file_path):
             return jsonify({'error': '文件不存在'}), 404
@@ -1699,8 +1930,14 @@ def api_get_route_result(result_path):
 
 @app.route('/api/bird-info/<bird_name>')
 def api_get_bird_info(bird_name):
-    """获取鸟类详细信息"""
+    """获取鸟类详细信息（带缓存）"""
     try:
+        # 检查缓存
+        cache_key = f'bird_info:{bird_name}'
+        cached_data = api_cache.get(cache_key)
+        if cached_data:
+            return jsonify(cached_data)
+
         db = init_database()
         if not db:
             return jsonify({'error': '数据库未初始化'}), 500
@@ -1726,7 +1963,7 @@ def api_get_bird_info(bird_name):
         conn.close()
 
         if result:
-            return jsonify({
+            response_data = {
                 'success': True,
                 'bird_info': {
                     'chinese_name': result[0],
@@ -1736,12 +1973,18 @@ def api_get_bird_info(bird_name):
                     'full_description': result[4],
                     'dongniao_url': result[5]
                 }
-            })
+            }
+            # 缓存结果
+            api_cache.set(cache_key, response_data)
+            return jsonify(response_data)
         else:
-            return jsonify({
+            response_data = {
                 'success': False,
                 'message': '未找到该鸟种信息'
-            })
+            }
+            # 也缓存"未找到"的结果，避免重复查询
+            api_cache.set(cache_key, response_data)
+            return jsonify(response_data)
 
     except Exception as e:
         import traceback
@@ -1882,7 +2125,7 @@ def api_route_hotspots():
         )
 
         # 反向地理编码获取地点名称
-        geolocator = Nominatim(user_agent="tuibird_tracker")
+        geolocator = get_geolocator()
         start_location = None
         end_location = None
 

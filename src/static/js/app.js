@@ -113,17 +113,28 @@ function getLocalApiKey() {
 }
 
 /**
- * 保存 API Key 到本地存储
+ * 保存 API Key 到本地存储和 Cookie
  */
 function saveLocalApiKey(apiKey) {
+    // 保存到 localStorage
     localStorage.setItem('ebird_api_key', apiKey);
+
+    // 同时保存到 Cookie（支持页面导航时传递 API Key）
+    // 设置 Cookie 有效期为 1 年
+    const expires = new Date();
+    expires.setFullYear(expires.getFullYear() + 1);
+    document.cookie = `ebird_api_key=${apiKey}; expires=${expires.toUTCString()}; path=/; SameSite=Lax`;
 }
 
 /**
- * 删除本地存储的 API Key
+ * 删除本地存储的 API Key 和 Cookie
  */
 function removeLocalApiKey() {
+    // 删除 localStorage
     localStorage.removeItem('ebird_api_key');
+
+    // 删除 Cookie
+    document.cookie = 'ebird_api_key=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
 }
 
 /**
@@ -140,6 +151,7 @@ async function apiRequest(url, options = {}) {
             headers: {
                 'Content-Type': 'application/json',
                 ...(apiKey && { 'X-eBird-API-Key': apiKey }),  // 如果有 API Key，添加到请求头
+                'X-CSRFToken': csrfToken,  // 添加 CSRF Token
                 ...options.headers
             }
         });
@@ -185,6 +197,21 @@ function debounce(func, wait) {
 // ==================== 页面加载完成后执行 ====================
 document.addEventListener('DOMContentLoaded', function() {
     console.log('TuiBird Tracker Web App Loaded');
+
+    // 同步 localStorage 中的 API Key 到 Cookie
+    const apiKey = getLocalApiKey();
+    if (apiKey) {
+        // 检查 Cookie 中是否已有 API Key
+        const cookieApiKey = document.cookie
+            .split('; ')
+            .find(row => row.startsWith('ebird_api_key='))
+            ?.split('=')[1];
+
+        // 如果 Cookie 中没有或者与 localStorage 不一致，则更新
+        if (!cookieApiKey || cookieApiKey !== apiKey) {
+            saveLocalApiKey(apiKey);
+        }
+    }
 
     // 添加动画样式
     const style = document.createElement('style');

@@ -4,6 +4,10 @@
 # Web Framework
 Flask==3.0.0
 Werkzeug==3.0.1
+Flask-WTF==1.2.2
+
+# Environment Variables
+python-dotenv==1.0.0
 
 # HTTP Requests
 requests==2.31.0

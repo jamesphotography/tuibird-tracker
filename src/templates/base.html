@@ -23,24 +23,31 @@
                 <span>图忆鸟讯</span>
             </div>
 
-            <ul class="nav-menu">
+            <!-- 汉堡菜单按钮（仅移动端显示） -->
+            <button class="nav-toggle" id="navToggle" aria-label="切换菜单">
+                <span></span>
+                <span></span>
+                <span></span>
+            </button>
+
+            <ul class="nav-menu" id="navMenu">
                 <li><a href="/" class="nav-link {% if request.path == '/' %}active{% endif %}">
-                    <i class="bi bi-house-fill"></i> 主页
+                    <i class="bi bi-house-fill"></i> <span>主页</span>
                 </a></li>
                 <li><a href="/tracker" class="nav-link {% if request.path == '/tracker' %}active{% endif %}">
-                    <i class="bi bi-bullseye"></i> 鸟讯
+                    <i class="bi bi-bullseye"></i> <span>鸟讯</span>
                 </a></li>
                 <li><a href="/region" class="nav-link {% if request.path == '/region' %}active{% endif %}">
-                    <i class="bi bi-globe-americas"></i> 鸟点
+                    <i class="bi bi-globe-americas"></i> <span>鸟点</span>
                 </a></li>
                 <li><a href="/route" class="nav-link {% if request.path == '/route' %}active{% endif %}">
-                    <i class="bi bi-map"></i> 路线
+                    <i class="bi bi-map"></i> <span>路线</span>
                 </a></li>
                 <li><a href="/reports" class="nav-link {% if request.path == '/reports' %}active{% endif %}">
-                    <i class="bi bi-file-text-fill"></i> 历史
+                    <i class="bi bi-file-text-fill"></i> <span>历史</span>
                 </a></li>
                 <li><a href="/settings" class="nav-link {% if request.path == '/settings' %}active{% endif %}">
-                    <i class="bi bi-gear-fill"></i> 设置
+                    <i class="bi bi-gear-fill"></i> <span>设置</span>
                 </a></li>
             </ul>
         </div>
@@ -74,6 +81,40 @@
 
     <!-- JavaScript -->
     <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+    <script>
+    // CSRF Token 设置
+    const csrfToken = '{{ csrf_token() }}';
+
+    // 移动端导航菜单切换
+    document.addEventListener('DOMContentLoaded', function() {
+        const navToggle = document.getElementById('navToggle');
+        const navMenu = document.getElementById('navMenu');
+
+        if (navToggle && navMenu) {
+            navToggle.addEventListener('click', function() {
+                navToggle.classList.toggle('active');
+                navMenu.classList.toggle('active');
+            });
+
+            // 点击菜单项后关闭菜单
+            const navLinks = navMenu.querySelectorAll('.nav-link');
+            navLinks.forEach(link => {
+                link.addEventListener('click', function() {
+                    navToggle.classList.remove('active');
+                    navMenu.classList.remove('active');
+                });
+            });
+
+            // 点击菜单外部关闭菜单
+            document.addEventListener('click', function(event) {
+                if (!navToggle.contains(event.target) && !navMenu.contains(event.target)) {
+                    navToggle.classList.remove('active');
+                    navMenu.classList.remove('active');
+                }
+            });
+        }
+    });
+    </script>
     <script>
     // 鸟类信息弹窗功能
     async function showBirdInfo(birdName) {
