@@ -13,6 +13,7 @@ import json
 import markdown
 from geopy.geocoders import Nominatim
 from geopy.exc import GeocoderTimedOut, GeocoderServiceError
+import time
 
 # 导入现有模块
 from config import VERSION, BUILD_DATE, ConfigManager, DB_FILE, AUSTRALIA_STATES, get_resource_path
@@ -27,6 +28,96 @@ app.config['JSON_AS_ASCII'] = False  # 支持中文 JSON
 config_manager = ConfigManager()
 bird_db = None
 api_client = None
+
+# 匿名用户共享的 API Key（请妥善保管，不要泄露）
+ANONYMOUS_API_KEY = '60nan25sogpo'
+
+# 匿名用户限流配置
+ANONYMOUS_LIMITS = {
+    'hourly_limit': 10,      # 每小时最多10次查询
+    'daily_limit': 30,       # 每天最多30次查询
+    'max_species': 1,        # 最多查询1个物种
+    'max_radius': 25,        # 最大搜索半径25km
+    'max_days': 7            # 最大时间范围7天
+}
+
+
+class RateLimiter:
+    """简单的速率限制器（基于文件存储）"""
+
+    def __init__(self):
+        self.storage_file = get_resource_path('rate_limit.json')
+        self.data = self._load_data()
+
+    def _load_data(self):
+        """加载限流数据"""
+        if os.path.exists(self.storage_file):
+            try:
+                with open(self.storage_file, 'r') as f:
+                    return json.load(f)
+            except Exception as e:
+                print(f"加载限流数据失败: {e}")
+        return {}
+
+    def _save_data(self):
+        """保存限流数据"""
+        try:
+            with open(self.storage_file, 'w') as f:
+                json.dump(self.data, f)
+        except Exception as e:
+            print(f"保存限流数据失败: {e}")
+
+    def _clean_old_data(self):
+        """清理过期数据（超过24小时）"""
+        now = time.time()
+        to_delete = []
+        for ip, records in self.data.items():
+            records['requests'] = [r for r in records.get('requests', [])
+                                  if now - r < 86400]  # 保留24小时内的记录
+            if not records['requests']:
+                to_delete.append(ip)
+
+        for ip in to_delete:
+            del self.data[ip]
+
+    def check_limit(self, ip_address):
+        """检查IP是否超过限制"""
+        self._clean_old_data()
+
+        now = time.time()
+        if ip_address not in self.data:
+            self.data[ip_address] = {'requests': []}
+
+        requests = self.data[ip_address]['requests']
+
+        # 检查小时限制
+        hour_ago = now - 3600
+        hourly_count = sum(1 for r in requests if r > hour_ago)
+
+        # 检查日限制
+        day_ago = now - 86400
+        daily_count = sum(1 for r in requests if r > day_ago)
+
+        return {
+            'allowed': hourly_count < ANONYMOUS_LIMITS['hourly_limit'] and
+                      daily_count < ANONYMOUS_LIMITS['daily_limit'],
+            'hourly_remaining': max(0, ANONYMOUS_LIMITS['hourly_limit'] - hourly_count),
+            'daily_remaining': max(0, ANONYMOUS_LIMITS['daily_limit'] - daily_count),
+            'hourly_count': hourly_count,
+            'daily_count': daily_count
+        }
+
+    def record_request(self, ip_address):
+        """记录一次请求"""
+        if ip_address not in self.data:
+            self.data[ip_address] = {'requests': []}
+
+        self.data[ip_address]['requests'].append(time.time())
+        self._save_data()
+
+
+# 全局限流器实例
+rate_limiter = RateLimiter()
 
 
 def init_database():
@@ -51,15 +142,28 @@ def init_api_client():
 def get_api_key_from_request():
     """
     从请求头中获取 API Key（客户端本地存储模式）
-    优先使用客户端传来的 API Key，其次使用服务器配置的 API Key
+    优先级：客户端 API Key > 服务器配置 > 匿名共享 Key
     """
     # 优先从请求头获取客户端 API Key
     client_api_key = request.headers.get('X-eBird-API-Key')
     if client_api_key:
         return client_api_key
 
-    # 备用：从服务器配置获取（向后兼容）
-    return config_manager.get_api_key()
+    # 其次从服务器配置获取（向后兼容）
+    server_key = config_manager.get_api_key()
+    if server_key:
+        return server_key
+
+    # 最后使用匿名共享 Key（供游客测试）
+    return ANONYMOUS_API_KEY
+
+
+def is_anonymous_user():
+    """
+    判断当前用户是否为匿名用户（使用共享 API Key）
+    """
+    api_key = get_api_key_from_request()
+    return api_key == ANONYMOUS_API_KEY
 
 
 def get_api_client_from_request():
@@ -435,9 +539,47 @@ def api_track():
         search_mode = data.get('search_mode', 'region')
         analysis_mode = data.get('analysis_mode', 'and')  # 分析模式：and(同时出现) 或 or(任一物种)
         days_back = data.get('days_back', 14)
+        radius = data.get('radius', 25)
 
         if not species_codes:
             return jsonify({'error': '请至少选择一个物种'}), 400
+
+        # 匿名用户限流和功能限制
+        if is_anonymous_user():
+            client_ip = request.remote_addr
+            limit_status = rate_limiter.check_limit(client_ip)
+
+            if not limit_status['allowed']:
+                return jsonify({
+                    'error': '⏱️ 访客模式已达使用上限',
+                    'message': f'每小时限制{ANONYMOUS_LIMITS["hourly_limit"]}次，每天限制{ANONYMOUS_LIMITS["daily_limit"]}次。\n'
+                              f'请注册免费的 eBird API Key 以解除限制。',
+                    'limit_info': limit_status,
+                    'register_url': 'https://ebird.org/api/keygen'
+                }), 429
+
+            # 功能限制检查
+            if len(species_codes) > ANONYMOUS_LIMITS['max_species']:
+                return jsonify({
+                    'error': f'访客模式最多查询 {ANONYMOUS_LIMITS["max_species"]} 个物种',
+                    'message': '请注册免费的 eBird API Key 以解除限制。',
+                    'register_url': 'https://ebird.org/api/keygen'
+                }), 400
+
+            if radius > ANONYMOUS_LIMITS['max_radius']:
+                return jsonify({
+                    'error': f'访客模式最大搜索半径为 {ANONYMOUS_LIMITS["max_radius"]} km',
+                    'message': '请注册免费的 eBird API Key 以解除限制。'
+                }), 400
+
+            if days_back > ANONYMOUS_LIMITS['max_days']:
+                return jsonify({
+                    'error': f'访客模式最大查询天数为 {ANONYMOUS_LIMITS["max_days"]} 天',
+                    'message': '请注册免费的 eBird API Key 以解除限制。'
+                }), 400
+
+            # 记录本次请求
+            rate_limiter.record_request(client_ip)
 
         # 从请求头获取 API Key 并初始化客户端
         client = get_api_client_from_request()
@@ -870,6 +1012,36 @@ def api_region_query():
         if not lat or not lng:
             return jsonify({'error': '请提供有效的 GPS 坐标'}), 400
 
+        # 匿名用户限流和功能限制
+        if is_anonymous_user():
+            client_ip = request.remote_addr
+            limit_status = rate_limiter.check_limit(client_ip)
+
+            if not limit_status['allowed']:
+                return jsonify({
+                    'error': '⏱️ 访客模式已达使用上限',
+                    'message': f'每小时限制{ANONYMOUS_LIMITS["hourly_limit"]}次，每天限制{ANONYMOUS_LIMITS["daily_limit"]}次。\n'
+                              f'请注册免费的 eBird API Key 以解除限制。',
+                    'limit_info': limit_status,
+                    'register_url': 'https://ebird.org/api/keygen'
+                }), 429
+
+            # 功能限制检查
+            if radius > ANONYMOUS_LIMITS['max_radius']:
+                return jsonify({
+                    'error': f'访客模式最大搜索半径为 {ANONYMOUS_LIMITS["max_radius"]} km',
+                    'message': '请注册免费的 eBird API Key 以解除限制。'
+                }), 400
+
+            if days_back > ANONYMOUS_LIMITS['max_days']:
+                return jsonify({
+                    'error': f'访客模式最大查询天数为 {ANONYMOUS_LIMITS["max_days"]} 天',
+                    'message': '请注册免费的 eBird API Key 以解除限制。'
+                }), 400
+
+            # 记录本次请求
+            rate_limiter.record_request(client_ip)
+
         # 从请求头获取 API Key 并初始化客户端
         client = get_api_client_from_request()
         if not client:
@@ -1215,6 +1387,31 @@ def api_get_report(report_path):
 
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/usage-status')
+def api_usage_status():
+    """获取当前用户的使用状态（匿名用户专用）"""
+    if not is_anonymous_user():
+        return jsonify({
+            'is_anonymous': False,
+            'message': '您正在使用自己的 API Key，无使用限制'
+        })
+
+    client_ip = request.remote_addr
+    limit_status = rate_limiter.check_limit(client_ip)
+
+    return jsonify({
+        'is_anonymous': True,
+        'limits': ANONYMOUS_LIMITS,
+        'usage': {
+            'hourly_remaining': limit_status['hourly_remaining'],
+            'daily_remaining': limit_status['daily_remaining'],
+            'hourly_used': limit_status['hourly_count'],
+            'daily_used': limit_status['daily_count']
+        },
+        'register_url': 'https://ebird.org/api/keygen'
+    })
 
 
 @app.route('/api/geocode', methods=['POST'])

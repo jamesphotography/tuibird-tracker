@@ -8,6 +8,47 @@
         <i class="bi bi-gear-fill"></i> 设置
     </h1>
 
+    <!-- 访客模式提示 -->
+    <div class="settings-card visitor-mode-card" id="visitorModeCard" style="display: none;">
+        <h2 class="card-title">
+            <i class="bi bi-person-badge"></i> 访客模式
+        </h2>
+
+        <div class="alert alert-warning">
+            <i class="bi bi-exclamation-triangle-fill"></i>
+            <strong>您正在使用访客模式</strong>
+        </div>
+
+        <div class="usage-stats" id="usageStats">
+            <div class="stat-item">
+                <div class="stat-label">今日剩余查询</div>
+                <div class="stat-value" id="dailyRemaining">-</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-label">本小时剩余</div>
+                <div class="stat-value" id="hourlyRemaining">-</div>
+            </div>
+        </div>
+
+        <div class="visitor-limits">
+            <h3>访客模式限制：</h3>
+            <ul>
+                <li>每小时最多 <strong>10</strong> 次查询</li>
+                <li>每天最多 <strong>30</strong> 次查询</li>
+                <li>单次最多查询 <strong>1</strong> 个物种</li>
+                <li>最大搜索半径 <strong>25</strong> km</li>
+                <li>最大查询天数 <strong>7</strong> 天</li>
+            </ul>
+        </div>
+
+        <div class="upgrade-prompt">
+            <p><i class="bi bi-gift-fill"></i> 注册免费的 eBird API Key 即可解除所有限制！</p>
+            <a href="https://ebird.org/api/keygen" target="_blank" class="btn btn-primary">
+                <i class="bi bi-key-fill"></i> 免费获取 API Key
+            </a>
+        </div>
+    </div>
+
     <!-- API Key 配置 -->
     <div class="settings-card">
         <h2 class="card-title">
@@ -199,14 +240,98 @@
 .alert-info i {
     color: #0066cc;
 }
+
+.alert-warning {
+    background-color: #fff3cd;
+    border: 1px solid #ffecb5;
+    color: #856404;
+}
+
+.visitor-mode-card {
+    background: linear-gradient(135deg, #FFF9E6 0%, #FFF3CD 100%);
+    border: 2px solid #FFE5A3;
+}
+
+.usage-stats {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1rem;
+    margin: 1.5rem 0;
+}
+
+.stat-item {
+    background: white;
+    padding: 1rem;
+    border-radius: 12px;
+    text-align: center;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+}
+
+.stat-label {
+    font-size: 0.85rem;
+    color: var(--text-light);
+    margin-bottom: 0.5rem;
+}
+
+.stat-value {
+    font-size: 2rem;
+    font-weight: bold;
+    background: linear-gradient(135deg, #546E7A 0%, #66BB6A 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.visitor-limits {
+    margin: 1.5rem 0;
+}
+
+.visitor-limits h3 {
+    color: var(--primary-color);
+    font-size: 1.1rem;
+    margin-bottom: 0.75rem;
+}
+
+.visitor-limits ul {
+    list-style: none;
+    padding: 0;
+}
+
+.visitor-limits li {
+    padding: 0.5rem 0;
+    padding-left: 1.5rem;
+    position: relative;
+}
+
+.visitor-limits li::before {
+    content: '•';
+    position: absolute;
+    left: 0.5rem;
+    color: var(--accent-color);
+    font-weight: bold;
+}
+
+.upgrade-prompt {
+    background: white;
+    padding: 1.5rem;
+    border-radius: 12px;
+    text-align: center;
+    margin-top: 1.5rem;
+}
+
+.upgrade-prompt p {
+    margin-bottom: 1rem;
+    font-size: 1.05rem;
+}
 </style>
 {% endblock %}
 
 {% block extra_js %}
 <script>
-// 页面加载时检查本地存储的 API Key
+// 页面加载时检查本地存储的 API Key 和访客状态
 document.addEventListener('DOMContentLoaded', function() {
     updateApiKeyStatus();
+    updateVisitorStatus();
 });
 
 // 更新 API Key 状态显示
@@ -329,7 +454,30 @@ function deleteApiKey() {
     // 更新状态显示
     setTimeout(() => {
         updateApiKeyStatus();
+        updateVisitorStatus();
     }, 500);
+}
+
+// 更新访客模式状态
+async function updateVisitorStatus() {
+    try {
+        const data = await apiRequest('/api/usage-status');
+        const visitorCard = document.getElementById('visitorModeCard');
+
+        if (data.is_anonymous) {
+            // 显示访客模式卡片
+            visitorCard.style.display = 'block';
+
+            // 更新使用统计
+            document.getElementById('dailyRemaining').textContent = data.usage.daily_remaining;
+            document.getElementById('hourlyRemaining').textContent = data.usage.hourly_remaining;
+        } else {
+            // 隐藏访客模式卡片
+            visitorCard.style.display = 'none';
+        }
+    } catch (error) {
+        console.error('获取访客状态失败:', error);
+    }
 }
 </script>
 {% endblock %}
