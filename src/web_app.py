@@ -72,6 +72,67 @@ def get_api_client_from_request():
     return EBirdAPIClient(api_key)
 
 
+def get_user_id_from_api_key(api_key):
+    """
+    根据 API Key 生成用户ID（使用哈希，保护隐私）
+    """
+    import hashlib
+    if not api_key:
+        return 'anonymous'
+    # 使用 SHA256 哈希前8位作为用户ID
+    hash_object = hashlib.sha256(api_key.encode())
+    return hash_object.hexdigest()[:8]
+
+
+def get_user_output_dir(api_key):
+    """
+    获取用户专属的输出目录
+    """
+    from config import get_resource_path
+    user_id = get_user_id_from_api_key(api_key)
+    output_base = get_resource_path('output')
+    user_dir = os.path.join(output_base, f"user_{user_id}")
+    os.makedirs(user_dir, exist_ok=True)
+    return user_dir
+
+
+def clean_old_reports(user_output_dir, days=7):
+    """
+    清理指定天数之前的旧报告
+    """
+    import time
+    cutoff_time = time.time() - (days * 24 * 60 * 60)
+
+    if not os.path.exists(user_output_dir):
+        return
+
+    deleted_count = 0
+    for root, dirs, files in os.walk(user_output_dir, topdown=False):
+        # 删除旧文件
+        for filename in files:
+            filepath = os.path.join(root, filename)
+            try:
+                if os.path.getmtime(filepath) < cutoff_time:
+                    os.remove(filepath)
+                    deleted_count += 1
+            except Exception as e:
+                print(f"删除文件失败 {filepath}: {e}")
+
+        # 删除空目录
+        for dirname in dirs:
+            dirpath = os.path.join(root, dirname)
+            try:
+                if not os.listdir(dirpath):  # 目录为空
+                    os.rmdir(dirpath)
+            except Exception as e:
+                print(f"删除目录失败 {dirpath}: {e}")
+
+    if deleted_count > 0:
+        print(f"清理了 {deleted_count} 个超过 {days} 天的旧报告")
+
+    return deleted_count
+
+
 def add_bird_name_links(html_content):
     """
     在HTML内容中为鸟名添加可点击链接
@@ -195,12 +256,15 @@ def settings():
 @app.route('/reports')
 def reports():
     """历史报告列表"""
-    output_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'output')
+    # 获取当前用户的专属目录
+    api_key = get_api_key_from_request()
+    user_output_dir = get_user_output_dir(api_key)
+
     reports_by_date = {}  # 按日期分组
 
-    if os.path.exists(output_dir):
-        for date_folder in sorted(os.listdir(output_dir), reverse=True):
-            date_path = os.path.join(output_dir, date_folder)
+    if os.path.exists(user_output_dir):
+        for date_folder in sorted(os.listdir(user_output_dir), reverse=True):
+            date_path = os.path.join(user_output_dir, date_folder)
             if os.path.isdir(date_path):
                 date_reports = []
                 for report_file in sorted(os.listdir(date_path), reverse=True):
@@ -287,8 +351,10 @@ def reports():
 def view_result(report_path):
     """查看报告详情（在线预览）"""
     try:
-        output_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'output')
-        report_file = os.path.join(output_dir, report_path)
+        # 获取当前用户的专属目录
+        api_key = get_api_key_from_request()
+        user_output_dir = get_user_output_dir(api_key)
+        report_file = os.path.join(user_output_dir, report_path)
 
         if not os.path.exists(report_file):
             return render_template('error.html',
@@ -585,12 +651,15 @@ def api_track():
                 'observations_count': 0
             })
 
-        # 生成 Markdown 报告
-        output_base = get_resource_path('output')
-        os.makedirs(output_base, exist_ok=True)
+        # 生成 Markdown 报告 - 使用用户专属目录
+        api_key = get_api_key_from_request()
+        user_output_dir = get_user_output_dir(api_key)
+
+        # 清理旧报告（7天前）
+        clean_old_reports(user_output_dir, days=7)
 
         today_str = datetime.datetime.now().strftime("%Y-%m-%d")
-        today_folder = os.path.join(output_base, today_str)
+        today_folder = os.path.join(user_output_dir, today_str)
         os.makedirs(today_folder, exist_ok=True)
 
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")
@@ -859,11 +928,14 @@ def api_region_query():
                                reverse=True)
 
         # 生成 Markdown 报告
-        output_base = get_resource_path('output')
-        os.makedirs(output_base, exist_ok=True)
+        api_key = get_api_key_from_request()
+        user_output_dir = get_user_output_dir(api_key)
+
+        # 清理旧报告（7天前的）
+        clean_old_reports(user_output_dir, days=7)
 
         today_str = datetime.datetime.now().strftime("%Y-%m-%d")
-        today_folder = os.path.join(output_base, today_str)
+        today_folder = os.path.join(user_output_dir, today_str)
         os.makedirs(today_folder, exist_ok=True)
 
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")
@@ -1617,11 +1689,15 @@ def api_route_hotspots():
         import datetime as dt
         import json
 
-        output_base = get_resource_path('output')
-        os.makedirs(output_base, exist_ok=True)
+        # 获取当前用户的专属目录
+        api_key = get_api_key_from_request()
+        user_output_dir = get_user_output_dir(api_key)
+
+        # 清理旧报告（7天前的）
+        clean_old_reports(user_output_dir, days=7)
 
         today_str = dt.datetime.now().strftime("%Y-%m-%d")
-        today_folder = os.path.join(output_base, today_str)
+        today_folder = os.path.join(user_output_dir, today_str)
         os.makedirs(today_folder, exist_ok=True)
 
         timestamp = dt.datetime.now().strftime('%Y%m%d_%H%M%S')
