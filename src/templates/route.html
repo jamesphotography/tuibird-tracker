@@ -1,0 +1,740 @@
+{% extends "base.html" %}
+
+{% block title %}路线热点 - 图忆鸟讯{% endblock %}
+
+{% block extra_head %}
+<!-- Leaflet CSS -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="route-container">
+    <h1 class="page-title">
+        <i class="bi bi-map"></i> 路线热点搜索
+    </h1>
+    <p class="subtitle">规划您的观鸟路线，发现沿途的 eBird 热点</p>
+
+    <div class="route-form">
+        <div class="form-group">
+            <label for="startLocation">
+                <i class="bi bi-geo-alt-fill text-success"></i> 起点
+            </label>
+            <div class="input-with-button">
+                <input type="text" id="startLocation" placeholder="例如: Darwin, NT 或 -12.4634,130.8456" class="form-input">
+                <button onclick="verifyStartLocation()" class="btn-icon" title="验证地址">
+                    <i class="bi bi-search"></i>
+                </button>
+            </div>
+            <small id="startVerified" class="verified-info"></small>
+        </div>
+
+        <div class="form-group">
+            <label for="endLocation">
+                <i class="bi bi-geo-alt-fill text-danger"></i> 终点
+            </label>
+            <div class="input-with-button">
+                <input type="text" id="endLocation" placeholder="例如: Katherine, NT 或 -14.4648,132.2648" class="form-input">
+                <button onclick="verifyEndLocation()" class="btn-icon" title="验证地址">
+                    <i class="bi bi-search"></i>
+                </button>
+            </div>
+            <small id="endVerified" class="verified-info"></small>
+        </div>
+
+        <div class="form-group">
+            <label for="searchRadius">
+                <i class="bi bi-circle"></i> 搜索半径 (公里)
+            </label>
+            <input type="number" id="searchRadius" value="5" min="1" max="50" class="form-input">
+            <small class="form-hint">沿路线搜索热点的半径范围</small>
+        </div>
+
+        <div class="form-group">
+            <label for="daysBack">
+                <i class="bi bi-calendar"></i> 时间范围 (天)
+            </label>
+            <input type="number" id="daysBack" value="14" min="1" max="30" class="form-input">
+            <small class="form-hint">仅显示最近N天有观测记录的热点</small>
+        </div>
+
+        <button onclick="searchRouteHotspots()" class="btn btn-primary btn-large">
+            <i class="bi bi-search"></i> 搜索路线热点
+        </button>
+    </div>
+
+    <!-- 结果展示区域 -->
+    <div id="resultsContainer" class="results-section" style="display: none;">
+        <h2 class="section-title">
+            <i class="bi bi-map-fill"></i> 路线地图
+        </h2>
+
+        <!-- 地图容器 -->
+        <div id="mapContainer" class="map-container">
+            <div id="map"></div>
+        </div>
+
+        <div id="routeInfo" class="route-info"></div>
+
+        <h2 class="section-title">
+            <i class="bi bi-pin-map-fill"></i> 沿途热点列表
+        </h2>
+        <div id="hotspotsList" class="hotspots-list"></div>
+    </div>
+</div>
+
+<style>
+.route-container {
+    max-width: 900px;
+    margin: 0 auto;
+}
+
+.page-title {
+    font-size: 2.5rem;
+    color: var(--primary-color);
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 0.5rem;
+}
+
+.subtitle {
+    color: var(--text-light);
+    font-size: 1.1rem;
+    margin-bottom: 2rem;
+}
+
+.route-form {
+    background: var(--card-bg);
+    padding: 2rem;
+    border-radius: 12px;
+    box-shadow: var(--shadow-sm);
+    margin-bottom: 2rem;
+}
+
+.form-group {
+    margin-bottom: 1.5rem;
+}
+
+.form-group label {
+    display: block;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+    color: var(--text-dark);
+}
+
+.form-input {
+    width: 100%;
+    padding: 0.75rem;
+    border: 2px solid var(--border-color);
+    border-radius: 8px;
+    font-size: 1rem;
+    transition: border-color 0.3s;
+}
+
+.form-input:focus {
+    outline: none;
+    border-color: var(--primary-color);
+}
+
+.input-with-button {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.input-with-button input {
+    flex: 1;
+}
+
+.btn-icon {
+    padding: 0.75rem 1rem;
+    background: var(--secondary-color);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.3s;
+}
+
+.btn-icon:hover {
+    background: var(--secondary-dark);
+}
+
+.verified-info {
+    display: block;
+    margin-top: 0.5rem;
+    color: var(--success-color);
+    font-size: 0.9rem;
+}
+
+.form-hint {
+    display: block;
+    margin-top: 0.3rem;
+    color: var(--text-light);
+    font-size: 0.85rem;
+}
+
+.btn-large {
+    width: 100%;
+    padding: 1rem;
+    font-size: 1.1rem;
+    margin-top: 1rem;
+}
+
+.results-section {
+    animation: fadeIn 0.5s;
+}
+
+.section-title {
+    font-size: 1.8rem;
+    color: var(--primary-color);
+    margin-bottom: 1.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.map-container {
+    background: var(--card-bg);
+    border-radius: 12px;
+    box-shadow: var(--shadow-md);
+    overflow: hidden;
+    margin-bottom: 2rem;
+}
+
+#map {
+    width: 100%;
+    height: 500px;
+}
+
+.route-info {
+    background: var(--card-bg);
+    padding: 1.5rem;
+    border-radius: 12px;
+    box-shadow: var(--shadow-sm);
+    margin-bottom: 1.5rem;
+}
+
+.hotspots-list {
+    display: grid;
+    gap: 1rem;
+}
+
+.hotspot-card {
+    background: var(--card-bg);
+    padding: 1.5rem;
+    border-radius: 12px;
+    box-shadow: var(--shadow-sm);
+    border-left: 4px solid var(--primary-color);
+    transition: transform 0.3s, box-shadow 0.3s;
+}
+
+.hotspot-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+}
+
+.hotspot-name {
+    font-size: 1.3rem;
+    font-weight: 600;
+    color: var(--primary-color);
+    margin-bottom: 0.5rem;
+}
+
+.hotspot-meta {
+    display: flex;
+    gap: 1.5rem;
+    flex-wrap: wrap;
+    margin-top: 0.5rem;
+    color: var(--text-light);
+    font-size: 0.9rem;
+}
+
+.hotspot-meta span {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+}
+
+.text-success {
+    color: var(--success-color);
+}
+
+.text-danger {
+    color: #e74c3c;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let startCoords = null;
+let endCoords = null;
+let map = null;
+let routeLayer = null;
+let markersLayer = null;
+
+async function verifyStartLocation() {
+    const location = document.getElementById('startLocation').value.trim();
+    if (!location) {
+        showNotification('请输入起点位置', 'error');
+        return;
+    }
+
+    const coords = await verifyLocation(location, 'startVerified');
+    if (coords) {
+        startCoords = coords;
+    }
+}
+
+async function verifyEndLocation() {
+    const location = document.getElementById('endLocation').value.trim();
+    if (!location) {
+        showNotification('请输入终点位置', 'error');
+        return;
+    }
+
+    const coords = await verifyLocation(location, 'endVerified');
+    if (coords) {
+        endCoords = coords;
+    }
+}
+
+async function verifyLocation(location, displayId) {
+    try {
+        // 检查是否是GPS坐标格式
+        const coordMatch = location.match(/^(-?\d+\.?\d*),\s*(-?\d+\.?\d*)$/);
+        if (coordMatch) {
+            const lat = parseFloat(coordMatch[1]);
+            const lng = parseFloat(coordMatch[2]);
+            document.getElementById(displayId).innerHTML =
+                `<i class="bi bi-check-circle-fill"></i> GPS: ${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+            return { lat, lng };
+        }
+
+        // 否则进行地址解析
+        const data = await apiRequest('/api/geocode', {
+            method: 'POST',
+            body: JSON.stringify({ place_name: location })
+        });
+
+        if (data.success) {
+            document.getElementById(displayId).innerHTML =
+                `<i class="bi bi-check-circle-fill"></i> ${data.display_name}<br>GPS: ${data.latitude.toFixed(4)}, ${data.longitude.toFixed(4)}`;
+            return { lat: data.latitude, lng: data.longitude };
+        }
+    } catch (error) {
+        // Error already handled by apiRequest
+        return null;
+    }
+}
+
+async function searchRouteHotspots() {
+    const startLocation = document.getElementById('startLocation').value.trim();
+    const endLocation = document.getElementById('endLocation').value.trim();
+    const searchRadius = parseInt(document.getElementById('searchRadius').value);
+    const daysBack = parseInt(document.getElementById('daysBack').value);
+
+    if (!startLocation || !endLocation) {
+        showNotification('请输入起点和终点', 'error');
+        return;
+    }
+
+    // 如果还没验证坐标，先验证
+    if (!startCoords) {
+        startCoords = await verifyLocation(startLocation, 'startVerified');
+    }
+    if (!endCoords) {
+        endCoords = await verifyLocation(endLocation, 'endVerified');
+    }
+
+    if (!startCoords || !endCoords) {
+        showNotification('地址验证失败，请检查输入', 'error');
+        return;
+    }
+
+    try {
+        // 禁用搜索按钮
+        const searchBtn = document.querySelector('.btn-primary');
+        const originalBtnText = searchBtn.innerHTML;
+        searchBtn.disabled = true;
+        searchBtn.innerHTML = '<i class="bi bi-hourglass-split"></i> 搜索中...';
+
+        // 显示详细的加载信息
+        showNotification('🗺️ 正在规划驾车路线...', 'info');
+
+        const data = await apiRequest('/api/route-hotspots', {
+            method: 'POST',
+            body: JSON.stringify({
+                start_lat: startCoords.lat,
+                start_lng: startCoords.lng,
+                end_lat: endCoords.lat,
+                end_lng: endCoords.lng,
+                search_radius: searchRadius,
+                days_back: daysBack
+            })
+        });
+
+        // 恢复按钮
+        searchBtn.disabled = false;
+        searchBtn.innerHTML = originalBtnText;
+
+        if (data.success) {
+            showNotification(`✓ 找到 ${data.hotspots_count} 个观鸟热点！`, 'success');
+            displayResults(data);
+        }
+    } catch (error) {
+        // 恢复按钮
+        const searchBtn = document.querySelector('.btn-primary');
+        searchBtn.disabled = false;
+        searchBtn.innerHTML = '<i class="bi bi-search"></i> 搜索路线热点';
+        // Error already handled by apiRequest
+    }
+}
+
+function initMap() {
+    if (!map) {
+        map = L.map('map').setView([-25.2744, 133.7751], 5); // 澳大利亚中心
+
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors',
+            maxZoom: 18
+        }).addTo(map);
+    }
+
+    // 清除之前的图层
+    if (routeLayer) {
+        map.removeLayer(routeLayer);
+    }
+    if (markersLayer) {
+        map.removeLayer(markersLayer);
+    }
+}
+
+function displayResults(data) {
+    const resultsContainer = document.getElementById('resultsContainer');
+    const routeInfo = document.getElementById('routeInfo');
+    const hotspotsList = document.getElementById('hotspotsList');
+
+    // 初始化地图
+    resultsContainer.style.display = 'block';
+    setTimeout(() => {
+        initMap();
+
+        // 显示驾车路线（使用API返回的真实路线坐标）
+        const routeCoords = data.route_coords || [
+            [startCoords.lat, startCoords.lng],
+            [endCoords.lat, endCoords.lng]
+        ];
+
+        routeLayer = L.polyline(routeCoords, {
+            color: '#3498db',
+            weight: 5,
+            opacity: 0.8
+        }).addTo(map);
+
+        // 添加起点和终点标记
+        const startIcon = L.divIcon({
+            className: 'custom-marker',
+            html: '<div style="background: #27ae60; color: white; width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; border: 2px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.3);">起</div>',
+            iconSize: [30, 30]
+        });
+
+        const endIcon = L.divIcon({
+            className: 'custom-marker',
+            html: '<div style="background: #e74c3c; color: white; width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; border: 2px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.3);">终</div>',
+            iconSize: [30, 30]
+        });
+
+        L.marker([startCoords.lat, startCoords.lng], {icon: startIcon})
+            .addTo(map)
+            .bindPopup(`<b>起点</b><br>${data.start_location || 'GPS坐标'}`);
+
+        L.marker([endCoords.lat, endCoords.lng], {icon: endIcon})
+            .addTo(map)
+            .bindPopup(`<b>终点</b><br>${data.end_location || 'GPS坐标'}`);
+
+        // 添加热点标记
+        if (data.hotspots && data.hotspots.length > 0) {
+            const hotspotIcon = L.divIcon({
+                className: 'custom-marker',
+                html: '<div style="background: #f39c12; color: white; width: 25px; height: 25px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; border: 2px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.3);">📍</div>',
+                iconSize: [25, 25]
+            });
+
+            data.hotspots.forEach((hotspot, index) => {
+                L.marker([hotspot.lat, hotspot.lng], {icon: hotspotIcon})
+                    .addTo(map)
+                    .bindPopup(`
+                        <b>${hotspot.locName}</b><br>
+                        <small>物种数: ${hotspot.numSpeciesAllTime || 'N/A'}<br>
+                        最近观测: ${hotspot.latestObsDt || '未知'}</small><br>
+                        <a href="https://ebird.org/hotspot/${hotspot.locId}" target="_blank">eBird页面</a>
+                    `);
+            });
+        }
+
+        // 调整地图视野以包含所有标记
+        const bounds = L.latLngBounds(routeCoords);
+        if (data.hotspots && data.hotspots.length > 0) {
+            data.hotspots.forEach(h => {
+                bounds.extend([h.lat, h.lng]);
+            });
+        }
+        map.fitBounds(bounds, {padding: [50, 50]});
+    }, 100);
+
+    // 显示路线信息
+    routeInfo.innerHTML = `
+        <h3><i class="bi bi-info-circle-fill"></i> 路线信息</h3>
+        <p><strong>起点:</strong> ${data.start_location || 'GPS坐标'}</p>
+        <p><strong>终点:</strong> ${data.end_location || 'GPS坐标'}</p>
+        <p><strong>驾车距离:</strong> ${data.route_distance_km} km</p>
+        <p><strong>搜索半径:</strong> ${data.search_radius} km（沿路线两侧）</p>
+        <p><strong>采样点数:</strong> ${data.sample_points_count} 个</p>
+        <p><strong>找到热点:</strong> ${data.hotspots_count} 个</p>
+    `;
+
+    // 显示热点列表
+    if (data.hotspots && data.hotspots.length > 0) {
+        hotspotsList.innerHTML = data.hotspots.map((hotspot, index) => `
+            <div class="hotspot-card">
+                <div class="hotspot-name">
+                    ${index + 1}. ${hotspot.locName}
+                </div>
+                <div class="hotspot-meta">
+                    <span><i class="bi bi-geo-alt-fill"></i> ${hotspot.lat.toFixed(4)}, ${hotspot.lng.toFixed(4)}</span>
+                    <span><i class="bi bi-calendar"></i> 最近观测: ${hotspot.latestObsDt || '未知'}</span>
+                    <span><i class="bi bi-eye-fill"></i> 观测物种数: ${hotspot.numSpeciesAllTime || 'N/A'}</span>
+                </div>
+                <div style="margin-top: 0.8rem;">
+                    <button onclick="viewHotspotDetails('${hotspot.locId}', '${hotspot.locName.replace(/'/g, "\\'")}', ${hotspot.lat}, ${hotspot.lng})" class="btn btn-primary btn-sm">
+                        <i class="bi bi-binoculars-fill"></i> 查看观测记录
+                    </button>
+                    <a href="https://maps.google.com/?q=${hotspot.lat},${hotspot.lng}" target="_blank" class="btn btn-secondary btn-sm">
+                        <i class="bi bi-map"></i> 地图
+                    </a>
+                    <a href="https://ebird.org/hotspot/${hotspot.locId}" target="_blank" class="btn btn-secondary btn-sm">
+                        <i class="bi bi-link-45deg"></i> eBird
+                    </a>
+                </div>
+            </div>
+        `).join('');
+    } else {
+        hotspotsList.innerHTML = '<p class="no-results">未找到符合条件的热点</p>';
+    }
+
+    resultsContainer.style.display = 'block';
+    resultsContainer.scrollIntoView({ behavior: 'smooth' });
+}
+
+// 查看热点详情
+async function viewHotspotDetails(locId, locName, lat, lng) {
+    const modal = document.getElementById('hotspotModal');
+    const modalBody = document.getElementById('hotspotModalBody');
+    const modalTitle = document.getElementById('hotspotModalTitle');
+
+    // 显示模态框
+    modal.style.display = 'block';
+    modalTitle.innerHTML = `<i class="bi bi-binoculars-fill"></i> ${locName}`;
+    modalBody.innerHTML = '<div class="loading-spinner"><i class="bi bi-hourglass-split"></i> 加载中...</div>';
+
+    try {
+        // 使用热点ID获取该热点的观测记录
+        const data = await apiRequest(`/api/hotspot-observations/${locId}?days=14`);
+
+        if (data.success && data.observations) {
+            let html = `
+                <div class="hotspot-info">
+                    <p><strong><i class="bi bi-geo-alt-fill"></i> 热点ID:</strong> ${locId}</p>
+                    <p><strong><i class="bi bi-binoculars-fill"></i> 最近14天观测:</strong> ${data.total_species} 个物种</p>
+                    <p><a href="https://ebird.org/hotspot/${locId}" target="_blank"><i class="bi bi-link-45deg"></i> 在 eBird 查看完整信息</a></p>
+                </div>
+
+                <h3><i class="bi bi-list-ul"></i> 鸟种名录 (${data.total_species} 种)</h3>
+                <div class="species-list">
+            `;
+
+            data.observations.forEach((obs, index) => {
+                const obsDate = obs.obsDt || '未知时间';
+                const count = obs.howMany || 'X';
+                const displayName = obs.cnName || obs.comName;  // 优先显示中文名
+                html += `
+                    <div class="species-item">
+                        <div class="species-name">
+                            <div class="cn">${index + 1}. <a href="javascript:void(0)" class="bird-name-link" onclick="showBirdInfo('${displayName}')">${displayName}</a></div>
+                            <div class="en">${obs.comName}</div>
+                        </div>
+                        <div class="species-count">${count} 只</div>
+                    </div>
+                `;
+            });
+
+            html += '</div>';
+            modalBody.innerHTML = html;
+        } else {
+            modalBody.innerHTML = '<div class="error-message"><i class="bi bi-exclamation-triangle"></i> 未找到观测记录</div>';
+        }
+    } catch (error) {
+        modalBody.innerHTML = '<div class="error-message"><i class="bi bi-exclamation-triangle"></i> 加载失败，请重试</div>';
+    }
+}
+
+function closeHotspotModal() {
+    document.getElementById('hotspotModal').style.display = 'none';
+}
+
+// 点击模态框外部关闭
+window.onclick = function(event) {
+    const modal = document.getElementById('hotspotModal');
+    if (event.target == modal) {
+        modal.style.display = 'none';
+    }
+}
+</script>
+
+<!-- 热点详情模态框 -->
+<div id="hotspotModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2 id="hotspotModalTitle"></h2>
+            <span class="close" onclick="closeHotspotModal()">&times;</span>
+        </div>
+        <div class="modal-body" id="hotspotModalBody">
+            <div class="loading-spinner">加载中...</div>
+        </div>
+    </div>
+</div>
+
+<style>
+/* 复用result.html的模态框样式 */
+.modal {
+    display: none;
+    position: fixed;
+    z-index: 1000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0,0,0,0.6);
+    animation: fadeIn 0.3s;
+}
+
+.modal-content {
+    background-color: var(--card-bg);
+    margin: 5% auto;
+    padding: 0;
+    border-radius: 12px;
+    max-width: 800px;
+    max-height: 80vh;
+    overflow: hidden;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+    animation: slideDown 0.3s;
+}
+
+.modal-header {
+    background: var(--primary-color);
+    color: white;
+    padding: 1.5rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.modal-header h2 {
+    margin: 0;
+    font-size: 1.5rem;
+}
+
+.close {
+    color: white;
+    font-size: 2rem;
+    font-weight: bold;
+    cursor: pointer;
+    line-height: 1;
+}
+
+.close:hover {
+    opacity: 0.8;
+}
+
+.modal-body {
+    padding: 2rem;
+    max-height: 60vh;
+    overflow-y: auto;
+}
+
+.hotspot-info {
+    background: var(--bg-color);
+    padding: 1rem;
+    border-radius: 8px;
+    margin-bottom: 1.5rem;
+}
+
+.hotspot-info p {
+    margin: 0.5rem 0;
+}
+
+.species-list {
+    display: grid;
+    gap: 0.8rem;
+}
+
+.species-item {
+    background: var(--bg-color);
+    padding: 1rem;
+    border-radius: 8px;
+    border-left: 4px solid var(--primary-color);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.species-name {
+    flex: 1;
+}
+
+.species-name .cn {
+    font-weight: 600;
+    font-size: 1.1rem;
+    color: var(--text-dark);
+}
+
+.species-name .en {
+    font-size: 0.9rem;
+    color: var(--text-light);
+    margin-top: 0.2rem;
+}
+
+.species-count {
+    font-size: 1.2rem;
+    font-weight: bold;
+    color: var(--primary-color);
+    min-width: 50px;
+    text-align: right;
+}
+
+@keyframes slideDown {
+    from {
+        transform: translateY(-50px);
+        opacity: 0;
+    }
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+</style>
+
+{% endblock %}

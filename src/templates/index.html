@@ -1,20 +1,17 @@
 {% extends "base.html" %}
 
-{% block title %}主页 - TuiBird Tracker{% endblock %}
+{% block title %}主页 - 图忆鸟讯{% endblock %}
 
 {% block content %}
 <div class="hero-section">
     <div class="hero-content">
         <h1 class="hero-title">
             <i class="bi bi-binoculars-fill"></i>
-            欢迎使用 TuiBird Tracker
+            <span class="app-name">图忆鸟讯</span><span class="app-subtitle">：专业eBird 鸟类观测数据查询和分析工具</span>
         </h1>
-        <p class="hero-subtitle">
-            专业的 eBird 鸟类观测数据查询和分析工具
-        </p>
         <div class="hero-buttons">
             <a href="/tracker" class="btn btn-primary btn-lg">
-                <i class="bi bi-bullseye"></i> 开始追踪
+                <i class="bi bi-bullseye"></i> 鸟讯追踪
             </a>
             <a href="/region" class="btn btn-secondary btn-lg">
                 <i class="bi bi-globe-americas"></i> 区域查询
@@ -28,37 +25,25 @@
 
     <div class="features-grid">
         <div class="feature-card">
-            <div class="feature-icon">
-                <i class="bi bi-search"></i>
-            </div>
-            <h3>单物种追踪</h3>
+            <h3><i class="bi bi-search"></i> 鸟讯追踪</h3>
             <p>精准追踪特定鸟种的最新观测记录，支持中英文搜索，提供详细的地点、时间和数量信息。</p>
-            <a href="/tracker" class="feature-link">开始使用 →</a>
+            <a href="/tracker" class="feature-link">开始追踪 →</a>
         </div>
 
         <div class="feature-card">
-            <div class="feature-icon">
-                <i class="bi bi-collection-fill"></i>
-            </div>
-            <h3>多物种分析</h3>
+            <h3><i class="bi bi-collection-fill"></i> 多鸟种分析</h3>
             <p>同时追踪多个物种，对比观测数据，生成综合分析报告，适合鸟类摄影师和观鸟爱好者。</p>
-            <a href="/tracker" class="feature-link">开始使用 →</a>
+            <a href="/tracker" class="feature-link">开始分析 →</a>
         </div>
 
         <div class="feature-card">
-            <div class="feature-icon">
-                <i class="bi bi-geo-alt-fill"></i>
-            </div>
-            <h3>区域查询</h3>
+            <h3><i class="bi bi-geo-alt-fill"></i> 鸟况查询</h3>
             <p>输入地点或 GPS 坐标，查询该区域内所有鸟种的观测记录，支持自定义搜索半径和时间范围。</p>
-            <a href="/region" class="feature-link">开始使用 →</a>
+            <a href="/region" class="feature-link">开始查询 →</a>
         </div>
 
         <div class="feature-card">
-            <div class="feature-icon">
-                <i class="bi bi-file-earmark-text-fill"></i>
-            </div>
-            <h3>专业报告</h3>
+            <h3><i class="bi bi-file-earmark-text-fill"></i> 历史报告</h3>
             <p>自动生成 Markdown 格式的详细报告，包含观测数据、统计分析和 Google Maps 地点链接。</p>
             <a href="/reports" class="feature-link">查看报告 →</a>
         </div>
@@ -109,6 +94,41 @@
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.hero-title {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
+.hero-title .app-name {
+    font-size: 3rem;
+    font-weight: 800;
+    color: var(--primary-color);
+}
+
+.hero-title .app-subtitle {
+    font-size: 1.2rem;
+    font-weight: 400;
+    color: var(--text-dark);
+    opacity: 0.85;
+}
+
+@media (max-width: 768px) {
+    .hero-title .app-name {
+        font-size: 2rem;
+    }
+
+    .hero-title .app-subtitle {
+        font-size: 1rem;
+    }
+}
+</style>
 {% endblock %}
 
 {% block extra_js %}

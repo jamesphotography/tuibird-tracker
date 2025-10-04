@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}TuiBird Tracker{% endblock %}</title>
+    <title>{% block title %}图忆鸟讯{% endblock %}</title>
 
     <!-- CSS -->
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
@@ -11,6 +11,7 @@
     <!-- Bootstrap Icons -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
 
+    {% block extra_head %}{% endblock %}
     {% block extra_css %}{% endblock %}
 </head>
 <body>
@@ -19,8 +20,7 @@
         <div class="nav-container">
             <div class="nav-brand">
                 <i class="bi bi-binoculars-fill"></i>
-                <span>TuiBird Tracker</span>
-                <span class="version">V{{ version }}</span>
+                <span>图忆鸟讯</span>
             </div>
 
             <ul class="nav-menu">
@@ -28,13 +28,16 @@
                     <i class="bi bi-house-fill"></i> 主页
                 </a></li>
                 <li><a href="/tracker" class="nav-link {% if request.path == '/tracker' %}active{% endif %}">
-                    <i class="bi bi-bullseye"></i> 物种追踪
+                    <i class="bi bi-bullseye"></i> 鸟讯
                 </a></li>
                 <li><a href="/region" class="nav-link {% if request.path == '/region' %}active{% endif %}">
-                    <i class="bi bi-globe-americas"></i> 区域查询
+                    <i class="bi bi-globe-americas"></i> 鸟点
+                </a></li>
+                <li><a href="/route" class="nav-link {% if request.path == '/route' %}active{% endif %}">
+                    <i class="bi bi-map"></i> 路线
                 </a></li>
                 <li><a href="/reports" class="nav-link {% if request.path == '/reports' %}active{% endif %}">
-                    <i class="bi bi-file-text-fill"></i> 历史报告
+                    <i class="bi bi-file-text-fill"></i> 历史
                 </a></li>
                 <li><a href="/settings" class="nav-link {% if request.path == '/settings' %}active{% endif %}">
                     <i class="bi bi-gear-fill"></i> 设置
@@ -48,16 +51,228 @@
         {% block content %}{% endblock %}
     </main>
 
+    <!-- 鸟类信息弹窗 -->
+    <div id="birdInfoModal" class="bird-modal">
+        <div class="bird-modal-content">
+            <div class="bird-modal-header">
+                <h2 id="birdModalTitle"><i class="bi bi-info-circle"></i> 鸟类信息</h2>
+                <span class="bird-modal-close" onclick="closeBirdInfoModal()">&times;</span>
+            </div>
+            <div class="bird-modal-body" id="birdModalBody">
+                <div class="loading-spinner"><i class="bi bi-hourglass-split"></i> 加载中...</div>
+            </div>
+        </div>
+    </div>
+
     <!-- 页脚 -->
     <footer class="footer">
         <div class="footer-container">
-            <p>© 2025 TuiBird Tracker V{{ version }} | 构建日期: {{ build_date }}</p>
+            <p>© 2025 图忆鸟讯 V{{ version }} | 构建日期: {{ build_date }}</p>
             <p>数据来源: <a href="https://ebird.org" target="_blank">eBird.org</a></p>
         </div>
     </footer>
 
     <!-- JavaScript -->
     <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+    <script>
+    // 鸟类信息弹窗功能
+    async function showBirdInfo(birdName) {
+        const modal = document.getElementById('birdInfoModal');
+        const modalBody = document.getElementById('birdModalBody');
+        const modalTitle = document.getElementById('birdModalTitle');
+
+        // 显示模态框
+        modal.style.display = 'block';
+        modalBody.innerHTML = '<div class="loading-spinner"><i class="bi bi-hourglass-split"></i> 加载中...</div>';
+
+        try {
+            // 获取鸟类信息
+            const data = await apiRequest(`/api/bird-info/${encodeURIComponent(birdName)}`);
+
+            if (data.success) {
+                const bird = data.bird_info;
+                modalTitle.innerHTML = `<i class="bi bi-info-circle"></i> ${bird.chinese_name}`;
+
+                let html = `
+                    <div class="bird-info-header">
+                        <h3>${bird.chinese_name}</h3>
+                        <p class="bird-names">
+                            <span class="english-name">${bird.english_name}</span>
+                            <span class="scientific-name">${bird.scientific_name}</span>
+                        </p>
+                    </div>
+                `;
+
+                if (bird.short_description) {
+                    html += `
+                        <div class="bird-info-section">
+                            <h4><i class="bi bi-info-square"></i> 简介</h4>
+                            <p>${bird.short_description}</p>
+                        </div>
+                    `;
+                }
+
+                if (bird.full_description) {
+                    html += `
+                        <div class="bird-info-section">
+                            <h4><i class="bi bi-book"></i> 详细信息</h4>
+                            <div class="bird-description">${bird.full_description.replace(/\n/g, '<br>')}</div>
+                        </div>
+                    `;
+                }
+
+                modalBody.innerHTML = html;
+            } else {
+                modalBody.innerHTML = `<div class="error-message"><i class="bi bi-exclamation-triangle"></i> ${data.message || '未找到鸟类信息'}</div>`;
+            }
+        } catch (error) {
+            modalBody.innerHTML = '<div class="error-message"><i class="bi bi-exclamation-triangle"></i> 加载失败，请重试</div>';
+        }
+    }
+
+    function closeBirdInfoModal() {
+        const modal = document.getElementById('birdInfoModal');
+        modal.style.display = 'none';
+    }
+
+    // 点击模态框外部关闭
+    window.addEventListener('click', function(event) {
+        const modal = document.getElementById('birdInfoModal');
+        if (event.target == modal) {
+            modal.style.display = 'none';
+        }
+    });
+    </script>
+    <style>
+    .bird-modal {
+        display: none;
+        position: fixed;
+        z-index: 2000;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0,0,0,0.6);
+        animation: fadeIn 0.3s;
+    }
+
+    .bird-modal-content {
+        background-color: var(--card-bg);
+        margin: 3% auto;
+        border-radius: 12px;
+        max-width: 700px;
+        max-height: 85vh;
+        overflow: hidden;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+        animation: slideDown 0.3s;
+    }
+
+    .bird-modal-header {
+        background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+        color: white;
+        padding: 1.5rem;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .bird-modal-header h2 {
+        margin: 0;
+        font-size: 1.5rem;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    .bird-modal-close {
+        color: white;
+        font-size: 2rem;
+        font-weight: bold;
+        cursor: pointer;
+        line-height: 1;
+    }
+
+    .bird-modal-close:hover {
+        opacity: 0.8;
+    }
+
+    .bird-modal-body {
+        padding: 2rem;
+        max-height: calc(85vh - 100px);
+        overflow-y: auto;
+    }
+
+    .bird-info-header h3 {
+        color: var(--primary-color);
+        font-size: 1.8rem;
+        margin-bottom: 0.5rem;
+    }
+
+    .bird-names {
+        color: var(--text-light);
+        font-size: 0.95rem;
+    }
+
+    .english-name {
+        font-style: italic;
+        margin-right: 1rem;
+    }
+
+    .scientific-name {
+        font-style: italic;
+        color: var(--text-light);
+    }
+
+    .bird-info-section {
+        margin-top: 1.5rem;
+        padding-top: 1.5rem;
+        border-top: 1px solid var(--border-color);
+    }
+
+    .bird-info-section h4 {
+        color: var(--primary-color);
+        margin-bottom: 1rem;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    .bird-description {
+        line-height: 1.8;
+        color: var(--text-dark);
+    }
+
+    .external-link {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        color: var(--secondary-color);
+        text-decoration: none;
+        font-weight: 500;
+        padding: 0.5rem 1rem;
+        border: 2px solid var(--secondary-color);
+        border-radius: 6px;
+        transition: all 0.3s;
+    }
+
+    .external-link:hover {
+        background: var(--secondary-color);
+        color: white;
+    }
+
+    .bird-name-link {
+        color: var(--secondary-color);
+        cursor: pointer;
+        text-decoration: none;
+        border-bottom: 1px dashed var(--secondary-color);
+        transition: all 0.3s;
+    }
+
+    .bird-name-link:hover {
+        color: var(--primary-color);
+        border-bottom-color: var(--primary-color);
+    }
+    </style>
     {% block extra_js %}{% endblock %}
 </body>
 </html>

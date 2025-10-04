@@ -20,10 +20,35 @@ function hideLoading() {
  * 显示通知消息
  */
 function showNotification(message, type = 'info') {
-    // 创建通知元素
+    // 创建通知容器
     const notification = document.createElement('div');
     notification.className = `notification notification-${type}`;
-    notification.textContent = message;
+
+    // 创建消息文本
+    const messageSpan = document.createElement('span');
+    messageSpan.textContent = message;
+    messageSpan.style.cssText = 'flex: 1; word-wrap: break-word;';
+
+    // 创建关闭按钮
+    const closeBtn = document.createElement('button');
+    closeBtn.innerHTML = '×';
+    closeBtn.style.cssText = `
+        background: none;
+        border: none;
+        color: white;
+        font-size: 1.5rem;
+        cursor: pointer;
+        padding: 0;
+        margin-left: 1rem;
+        line-height: 1;
+        opacity: 0.8;
+    `;
+    closeBtn.onmouseover = () => closeBtn.style.opacity = '1';
+    closeBtn.onmouseout = () => closeBtn.style.opacity = '0.8';
+    closeBtn.onclick = () => removeNotification(notification);
+
+    notification.appendChild(messageSpan);
+    notification.appendChild(closeBtn);
 
     // 样式
     notification.style.cssText = `
@@ -35,7 +60,10 @@ function showNotification(message, type = 'info') {
         box-shadow: 0 4px 6px rgba(0,0,0,0.1);
         z-index: 9999;
         animation: slideIn 0.3s ease;
-        max-width: 400px;
+        max-width: 500px;
+        display: flex;
+        align-items: flex-start;
+        gap: 0.5rem;
     `;
 
     // 根据类型设置颜色
@@ -51,24 +79,67 @@ function showNotification(message, type = 'info') {
 
     document.body.appendChild(notification);
 
-    // 3秒后自动移除
-    setTimeout(() => {
+    // 错误和警告消息需要手动关闭，其他消息5秒后自动移除
+    if (type === 'error' || type === 'warning') {
+        // 不自动关闭，只能手动点击 × 关闭
+        notification.setAttribute('data-persistent', 'true');
+    } else {
+        // 成功和信息消息5秒后自动移除
+        setTimeout(() => {
+            removeNotification(notification);
+        }, 5000);
+    }
+}
+
+/**
+ * 移除通知
+ */
+function removeNotification(notification) {
+    if (notification && notification.parentElement) {
         notification.style.animation = 'slideOut 0.3s ease';
         setTimeout(() => {
-            document.body.removeChild(notification);
+            if (notification.parentElement) {
+                document.body.removeChild(notification);
+            }
         }, 300);
-    }, 3000);
+    }
+}
+
+/**
+ * 获取本地存储的 API Key
+ */
+function getLocalApiKey() {
+    return localStorage.getItem('ebird_api_key');
+}
+
+/**
+ * 保存 API Key 到本地存储
+ */
+function saveLocalApiKey(apiKey) {
+    localStorage.setItem('ebird_api_key', apiKey);
+}
+
+/**
+ * 删除本地存储的 API Key
+ */
+function removeLocalApiKey() {
+    localStorage.removeItem('ebird_api_key');
 }
 
 /**
  * API 请求封装
+ * 自动从 localStorage 读取 API Key 并添加到请求头
  */
 async function apiRequest(url, options = {}) {
     try {
+        // 从本地存储获取 API Key
+        const apiKey = getLocalApiKey();
+
         const response = await fetch(url, {
             ...options,
             headers: {
                 'Content-Type': 'application/json',
+                ...(apiKey && { 'X-eBird-API-Key': apiKey }),  // 如果有 API Key，添加到请求头
                 ...options.headers
             }
         });

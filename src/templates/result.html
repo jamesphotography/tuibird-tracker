@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}查询结果 - TuiBird Tracker{% endblock %}
+{% block title %}查询结果 - 图忆鸟讯{% endblock %}
 
 {% block content %}
 <div class="result-container">
@@ -33,6 +33,19 @@
         <a href="/tracker" class="btn btn-secondary">
             <i class="bi bi-arrow-left"></i> 返回追踪
         </a>
+    </div>
+</div>
+
+<!-- 观测清单模态框 -->
+<div id="checklistModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2><i class="bi bi-list-check"></i> 观测清单详情</h2>
+            <span class="close" onclick="closeChecklistModal()">&times;</span>
+        </div>
+        <div class="modal-body" id="checklistModalBody">
+            <div class="loading-spinner">加载中...</div>
+        </div>
     </div>
 </div>
 
@@ -142,6 +155,141 @@
     justify-content: center;
     flex-wrap: wrap;
 }
+
+/* 查看清单按钮样式 */
+.btn-view-checklist {
+    background: var(--secondary-color);
+    color: white;
+    border: none;
+    padding: 0.3rem 0.8rem;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    margin-left: 0.5rem;
+    transition: background 0.3s;
+}
+
+.btn-view-checklist:hover {
+    background: var(--secondary-dark);
+}
+
+/* 模态框样式 */
+.modal {
+    display: none;
+    position: fixed;
+    z-index: 1000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0,0,0,0.6);
+    animation: fadeIn 0.3s;
+}
+
+.modal-content {
+    background-color: var(--card-bg);
+    margin: 5% auto;
+    padding: 0;
+    border-radius: 12px;
+    max-width: 800px;
+    max-height: 80vh;
+    overflow: hidden;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+    animation: slideDown 0.3s;
+}
+
+.modal-header {
+    background: var(--primary-color);
+    color: white;
+    padding: 1.5rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.modal-header h2 {
+    margin: 0;
+    font-size: 1.5rem;
+}
+
+.close {
+    color: white;
+    font-size: 2rem;
+    font-weight: bold;
+    cursor: pointer;
+    line-height: 1;
+}
+
+.close:hover {
+    opacity: 0.8;
+}
+
+.modal-body {
+    padding: 2rem;
+    max-height: 60vh;
+    overflow-y: auto;
+}
+
+.checklist-info {
+    background: var(--bg-color);
+    padding: 1rem;
+    border-radius: 8px;
+    margin-bottom: 1.5rem;
+}
+
+.checklist-info p {
+    margin: 0.5rem 0;
+}
+
+.species-list {
+    display: grid;
+    gap: 0.8rem;
+}
+
+.species-item {
+    background: var(--bg-color);
+    padding: 1rem;
+    border-radius: 8px;
+    border-left: 4px solid var(--primary-color);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.species-name {
+    flex: 1;
+}
+
+.species-name .cn {
+    font-weight: 600;
+    font-size: 1.1rem;
+    color: var(--text-dark);
+}
+
+.species-name .en {
+    font-size: 0.9rem;
+    color: var(--text-light);
+    margin-top: 0.2rem;
+}
+
+.species-count {
+    font-size: 1.2rem;
+    font-weight: bold;
+    color: var(--primary-color);
+    min-width: 50px;
+    text-align: right;
+}
+
+@keyframes slideDown {
+    from {
+        transform: translateY(-50px);
+        opacity: 0;
+    }
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
 </style>
 {% endblock %}
 
@@ -170,6 +318,66 @@ async function downloadReport() {
         }
     } catch (error) {
         // Error already handled by apiRequest
+    }
+}
+
+async function viewChecklist(subId) {
+    const modal = document.getElementById('checklistModal');
+    const modalBody = document.getElementById('checklistModalBody');
+
+    // 显示模态框
+    modal.style.display = 'block';
+    modalBody.innerHTML = '<div class="loading-spinner"><i class="bi bi-hourglass-split"></i> 加载中...</div>';
+
+    try {
+        // 获取清单详情
+        const data = await apiRequest(`/api/checklist/${subId}`);
+
+        if (data.success) {
+            // 构建HTML
+            let html = `
+                <div class="checklist-info">
+                    <h3><i class="bi bi-geo-alt-fill"></i> ${data.location}</h3>
+                    <p><strong>观测日期:</strong> ${data.date}</p>
+                    <p><strong>物种数量:</strong> ${data.num_species} 种</p>
+                    <p><strong>清单ID:</strong> ${data.sub_id}</p>
+                </div>
+
+                <h3><i class="bi bi-list-ul"></i> 观测记录 (${data.observations.length} 种)</h3>
+                <div class="species-list">
+            `;
+
+            data.observations.forEach((obs, index) => {
+                const displayName = obs.cn_name || obs.en_name;
+                html += `
+                    <div class="species-item">
+                        <div class="species-name">
+                            <div class="cn">${index + 1}. <a href="javascript:void(0)" class="bird-name-link" onclick="showBirdInfo('${displayName}')">${displayName}</a></div>
+                            ${obs.cn_name && obs.en_name ? `<div class="en">${obs.en_name}</div>` : ''}
+                        </div>
+                        <div class="species-count">${obs.count} 只</div>
+                    </div>
+                `;
+            });
+
+            html += '</div>';
+            modalBody.innerHTML = html;
+        }
+    } catch (error) {
+        modalBody.innerHTML = '<div class="error-message"><i class="bi bi-exclamation-triangle"></i> 加载失败，请重试</div>';
+    }
+}
+
+function closeChecklistModal() {
+    const modal = document.getElementById('checklistModal');
+    modal.style.display = 'none';
+}
+
+// 点击模态框外部关闭
+window.onclick = function(event) {
+    const modal = document.getElementById('checklistModal');
+    if (event.target == modal) {
+        modal.style.display = 'none';
     }
 }
 </script>

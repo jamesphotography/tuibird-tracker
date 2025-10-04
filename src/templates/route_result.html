@@ -1,0 +1,508 @@
+{% extends "base.html" %}
+
+{% block title %}路线热点结果 - 图忆鸟讯{% endblock %}
+
+{% block content %}
+<div class="result-container">
+    <div class="result-header">
+        <h1 class="page-title">
+            <i class="bi bi-signpost-2-fill"></i> 路线热点结果
+        </h1>
+        <div class="route-info">
+            <h2>{{ start_location }} → {{ end_location }}</h2>
+            <div class="result-meta">
+                <span class="badge"><i class="bi bi-arrow-left-right"></i> 路线距离: {{ summary.route_distance_km }}km</span>
+                <span class="badge"><i class="bi bi-pin-map-fill"></i> 找到热点: {{ summary.hotspots_count }} 个</span>
+                <span class="badge"><i class="bi bi-clock-fill"></i> {{ query.timestamp if query.timestamp else result_data.timestamp }}</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- 搜索参数 -->
+    <div class="info-card">
+        <h3><i class="bi bi-info-circle-fill"></i> 搜索参数</h3>
+        <div class="params-grid">
+            <div class="param-item">
+                <span class="param-label">起点:</span>
+                <span class="param-value">{{ query.start_location }}</span>
+            </div>
+            <div class="param-item">
+                <span class="param-label">终点:</span>
+                <span class="param-value">{{ query.end_location }}</span>
+            </div>
+            <div class="param-item">
+                <span class="param-label">搜索半径:</span>
+                <span class="param-value">{{ query.search_radius }}km</span>
+            </div>
+            <div class="param-item">
+                <span class="param-label">观测天数:</span>
+                <span class="param-value">最近{{ query.days_back }}天</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- 热点列表 -->
+    <div class="hotspots-section">
+        <h3><i class="bi bi-geo-alt-fill"></i> 沿途热点 ({{ hotspots|length }} 个)</h3>
+
+        {% if hotspots %}
+        <div class="hotspots-list">
+            {% for hotspot in hotspots %}
+            <div class="hotspot-card">
+                <div class="hotspot-number">{{ loop.index }}</div>
+                <div class="hotspot-info">
+                    <h4 class="hotspot-name">{{ hotspot.locName }}</h4>
+                    <p class="hotspot-details">
+                        <span><i class="bi bi-compass"></i> {{ hotspot.lat }}, {{ hotspot.lng }}</span>
+                        <span><i class="bi bi-binoculars"></i> 最近观测: {{ hotspot.numSpeciesAllTime }} 种</span>
+                    </p>
+                    <p class="hotspot-location">
+                        <i class="bi bi-pin"></i> 距离路线: {{ hotspot.distance_to_route|default(0)|round(1) }}km
+                    </p>
+                </div>
+                <div class="hotspot-actions">
+                    <button onclick="viewHotspotObservations('{{ hotspot.locId }}')" class="btn btn-primary btn-sm">
+                        <i class="bi bi-eye"></i> 查看观测记录
+                    </button>
+                    <a href="https://ebird.org/hotspot/{{ hotspot.locId }}" target="_blank" class="btn btn-secondary btn-sm">
+                        <i class="bi bi-box-arrow-up-right"></i> eBird
+                    </a>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="empty-state">
+            <i class="bi bi-inbox"></i>
+            <p>未找到热点</p>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- 操作按钮 -->
+    <div class="action-bar">
+        <a href="/reports" class="btn btn-primary">
+            <i class="bi bi-folder-fill"></i> 返回历史报告
+        </a>
+        <button onclick="downloadRouteResult()" class="btn btn-secondary">
+            <i class="bi bi-download"></i> 下载JSON
+        </button>
+        <a href="/route" class="btn btn-secondary">
+            <i class="bi bi-search"></i> 新建搜索
+        </a>
+    </div>
+</div>
+
+<!-- 观测清单模态框 -->
+<div id="observationsModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2><i class="bi bi-list-check"></i> 热点观测记录</h2>
+            <span class="close" onclick="closeObservationsModal()">&times;</span>
+        </div>
+        <div class="modal-body" id="observationsModalBody">
+            <div class="loading-spinner">加载中...</div>
+        </div>
+    </div>
+</div>
+
+<style>
+.result-container {
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+.result-header {
+    margin-bottom: 2rem;
+}
+
+.page-title {
+    font-size: 2.5rem;
+    color: var(--primary-color);
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.route-info h2 {
+    font-size: 1.8rem;
+    color: var(--text-dark);
+    margin-bottom: 1rem;
+}
+
+.result-meta {
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.badge {
+    background: var(--primary-color);
+    color: white;
+    padding: 0.5rem 1rem;
+    border-radius: 20px;
+    font-size: 0.9rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+}
+
+.info-card {
+    background: var(--card-bg);
+    padding: 1.5rem;
+    border-radius: 12px;
+    box-shadow: var(--shadow-sm);
+    margin-bottom: 2rem;
+}
+
+.info-card h3 {
+    color: var(--primary-color);
+    margin-bottom: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.params-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 1rem;
+}
+
+.param-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+}
+
+.param-label {
+    font-weight: 600;
+    color: var(--text-light);
+    font-size: 0.85rem;
+}
+
+.param-value {
+    color: var(--text-dark);
+    font-size: 1rem;
+}
+
+.hotspots-section {
+    margin-bottom: 2rem;
+}
+
+.hotspots-section h3 {
+    font-size: 1.5rem;
+    color: var(--primary-color);
+    margin-bottom: 1.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.hotspots-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.hotspot-card {
+    background: var(--card-bg);
+    padding: 1.25rem;
+    border-radius: 8px;
+    box-shadow: var(--shadow-sm);
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    transition: var(--transition);
+}
+
+.hotspot-card:hover {
+    transform: translateX(5px);
+    box-shadow: var(--shadow-md);
+}
+
+.hotspot-number {
+    width: 40px;
+    height: 40px;
+    background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+    color: white;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    flex-shrink: 0;
+}
+
+.hotspot-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.hotspot-name {
+    font-size: 1.1rem;
+    margin-bottom: 0.5rem;
+    color: var(--text-dark);
+}
+
+.hotspot-details {
+    font-size: 0.9rem;
+    color: var(--text-light);
+    margin-bottom: 0.3rem;
+    display: flex;
+    gap: 1.5rem;
+    flex-wrap: wrap;
+}
+
+.hotspot-details span {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+}
+
+.hotspot-location {
+    font-size: 0.85rem;
+    color: var(--text-light);
+    margin: 0;
+}
+
+.hotspot-actions {
+    display: flex;
+    gap: 0.5rem;
+    flex-shrink: 0;
+}
+
+.btn-sm {
+    padding: 0.4rem 0.8rem;
+    font-size: 0.85rem;
+}
+
+.action-bar {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+    flex-wrap: wrap;
+    padding: 2rem 0;
+}
+
+.empty-state {
+    text-align: center;
+    padding: 3rem;
+    background: var(--card-bg);
+    border-radius: 12px;
+}
+
+.empty-state i {
+    font-size: 3rem;
+    color: var(--text-light);
+    margin-bottom: 1rem;
+}
+
+/* 模态框样式 */
+.modal {
+    display: none;
+    position: fixed;
+    z-index: 1000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0,0,0,0.6);
+    animation: fadeIn 0.3s;
+}
+
+.modal-content {
+    background-color: var(--card-bg);
+    margin: 5% auto;
+    padding: 0;
+    border-radius: 12px;
+    max-width: 800px;
+    max-height: 80vh;
+    overflow: hidden;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+    animation: slideDown 0.3s;
+}
+
+.modal-header {
+    background: var(--primary-color);
+    color: white;
+    padding: 1.5rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.modal-header h2 {
+    margin: 0;
+    font-size: 1.5rem;
+}
+
+.close {
+    color: white;
+    font-size: 2rem;
+    font-weight: bold;
+    cursor: pointer;
+    line-height: 1;
+}
+
+.close:hover {
+    opacity: 0.8;
+}
+
+.modal-body {
+    padding: 2rem;
+    max-height: 60vh;
+    overflow-y: auto;
+}
+
+.hotspot-info-box {
+    background: var(--bg-color);
+    padding: 1rem;
+    border-radius: 8px;
+    margin-bottom: 1.5rem;
+}
+
+.hotspot-info-box p {
+    margin: 0.5rem 0;
+}
+
+.species-list {
+    display: grid;
+    gap: 0.8rem;
+}
+
+.species-item {
+    background: var(--bg-color);
+    padding: 1rem;
+    border-radius: 8px;
+    border-left: 4px solid var(--primary-color);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.species-name {
+    flex: 1;
+}
+
+.species-name .cn {
+    font-weight: 600;
+    font-size: 1.1rem;
+    color: var(--text-dark);
+}
+
+.species-name .en {
+    font-size: 0.9rem;
+    color: var(--text-light);
+    margin-top: 0.2rem;
+}
+
+.species-count {
+    font-size: 1.2rem;
+    font-weight: bold;
+    color: var(--primary-color);
+    min-width: 50px;
+    text-align: right;
+}
+
+@keyframes slideDown {
+    from {
+        transform: translateY(-50px);
+        opacity: 0;
+    }
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const RESULT_PATH = '{{ result_path }}';
+
+async function viewHotspotObservations(locId) {
+    const modal = document.getElementById('observationsModal');
+    const modalBody = document.getElementById('observationsModalBody');
+
+    // 显示模态框
+    modal.style.display = 'block';
+    modalBody.innerHTML = '<div class="loading-spinner"><i class="bi bi-hourglass-split"></i> 加载中...</div>';
+
+    try {
+        // 获取热点观测记录
+        const data = await apiRequest(`/api/hotspot-observations/${locId}?days=14`);
+
+        if (data.success) {
+            // 构建HTML
+            let html = `
+                <div class="hotspot-info-box">
+                    <p><strong><i class="bi bi-geo-alt-fill"></i> 热点ID:</strong> ${locId}</p>
+                    <p><strong><i class="bi bi-binoculars-fill"></i> 最近14天观测:</strong> ${data.total_species} 个物种</p>
+                    <p><a href="https://ebird.org/hotspot/${locId}" target="_blank"><i class="bi bi-link-45deg"></i> 在 eBird 查看完整信息</a></p>
+                </div>
+
+                <h3><i class="bi bi-list-ul"></i> 鸟种名录 (${data.total_species} 种)</h3>
+                <div class="species-list">
+            `;
+
+            data.observations.forEach((obs, index) => {
+                const displayName = obs.cnName || obs.comName;
+                html += `
+                    <div class="species-item">
+                        <div class="species-name">
+                            <div class="cn">${index + 1}. <a href="javascript:void(0)" class="bird-name-link" onclick="showBirdInfo('${displayName}')">${displayName}</a></div>
+                            ${obs.cnName && obs.comName ? `<div class="en">${obs.comName}</div>` : ''}
+                        </div>
+                        <div class="species-count">${obs.howMany} 只</div>
+                    </div>
+                `;
+            });
+
+            html += '</div>';
+            modalBody.innerHTML = html;
+        }
+    } catch (error) {
+        modalBody.innerHTML = '<div class="error-message"><i class="bi bi-exclamation-triangle"></i> 加载失败，请重试</div>';
+    }
+}
+
+function closeObservationsModal() {
+    const modal = document.getElementById('observationsModal');
+    modal.style.display = 'none';
+}
+
+async function downloadRouteResult() {
+    try {
+        const data = await apiRequest(`/api/route-result/${RESULT_PATH}`);
+
+        if (data.success) {
+            // 创建 JSON Blob 并下载
+            const blob = new Blob([JSON.stringify(data.result, null, 2)], { type: 'application/json;charset=utf-8' });
+            const url = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = data.filename;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            window.URL.revokeObjectURL(url);
+
+            showNotification('路线结果已下载', 'success');
+        }
+    } catch (error) {
+        // Error already handled by apiRequest
+    }
+}
+
+// 点击模态框外部关闭
+window.onclick = function(event) {
+    const modal = document.getElementById('observationsModal');
+    if (event.target == modal) {
+        modal.style.display = 'none';
+    }
+}
+</script>
+{% endblock %}

@@ -14,8 +14,8 @@ from datetime import datetime, timedelta
 
 # ==================== 版本信息 ====================
 
-VERSION = "4.0.1"
-BUILD_DATE = "2025-10-01"
+VERSION = "0.4.1"
+BUILD_DATE = "2025-10-04"
 AUTHOR = "TuiBird Team"
 DESCRIPTION = "eBird 统一鸟类追踪工具"
 

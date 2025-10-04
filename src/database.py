@@ -102,6 +102,16 @@ class BirdDatabase:
         self._code_to_name_map = {bird['code']: bird['cn_name'] for bird in birds}
         return self._code_to_name_map
 
+    def get_code_to_full_name_map(self) -> Dict[str, Dict[str, str]]:
+        """
+        获取鸟种代码到中英文名的完整映射
+
+        Returns:
+            {鸟种代码: {'cn_name': 中文名, 'en_name': 英文名}} 的字典
+        """
+        birds = self.load_all_birds()
+        return {bird['code']: {'cn_name': bird['cn_name'], 'en_name': bird['en_name']} for bird in birds}
+
     def find_species_by_name(self, query: str) -> List[Dict]:
         """
         根据名称模糊搜索鸟种

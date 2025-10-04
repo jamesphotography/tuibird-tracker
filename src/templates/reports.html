@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}历史报告 - TuiBird Tracker{% endblock %}
+{% block title %}历史报告 - 图忆鸟讯{% endblock %}
 
 {% block content %}
 <div class="reports-container">
@@ -19,7 +19,9 @@
             {% for report in reports %}
             <div class="report-card">
                 <div class="report-icon">
-                    {% if 'Tracker' in report.filename %}
+                    {% if report.type == 'route' %}
+                    <i class="bi bi-signpost-2"></i>
+                    {% elif 'Tracker' in report.filename %}
                     <i class="bi bi-bullseye"></i>
                     {% elif 'Region' in report.filename or 'Birding' in report.filename %}
                     <i class="bi bi-globe-americas"></i>
@@ -29,16 +31,38 @@
                 </div>
 
                 <div class="report-info">
-                    <h3 class="report-title">{{ report.filename }}</h3>
+                    <h3 class="report-title">
+                        {% if report.type == 'route' %}
+                        <span class="badge badge-route">路线热点</span>
+                        {{ report.display_name }}
+                        {% else %}
+                        {{ report.display_name }}
+                        {% endif %}
+                    </h3>
+                    {% if report.type == 'route' and report.metadata %}
+                    <p class="report-meta">
+                        <i class="bi bi-geo-alt"></i> {{ report.metadata.distance }}km
+                        | <i class="bi bi-pin-map"></i> {{ report.metadata.hotspots }} 个热点
+                    </p>
+                    {% endif %}
                 </div>
 
                 <div class="report-actions">
+                    {% if report.type == 'route' %}
+                    <a href="/route-result/{{ report.path }}" class="btn btn-primary btn-sm">
+                        <i class="bi bi-eye"></i> 查看
+                    </a>
+                    <button onclick="downloadRouteResult('{{ report.path }}')" class="btn btn-secondary btn-sm">
+                        <i class="bi bi-download"></i> 下载
+                    </button>
+                    {% else %}
                     <button onclick="viewReport('{{ report.path }}')" class="btn btn-primary btn-sm">
                         <i class="bi bi-eye"></i> 查看
                     </button>
                     <button onclick="downloadReport('{{ report.path }}')" class="btn btn-secondary btn-sm">
                         <i class="bi bi-download"></i> 下载
                     </button>
+                    {% endif %}
                 </div>
             </div>
             {% endfor %}
@@ -139,6 +163,12 @@
     margin: 0;
 }
 
+.report-meta {
+    font-size: 0.85rem;
+    color: var(--text-light);
+    margin: 0.25rem 0 0 0;
+}
+
 .report-actions {
     display: flex;
     gap: 0.5rem;
@@ -172,6 +202,15 @@
 .empty-state p {
     color: var(--text-light);
 }
+
+.badge-route {
+    background: var(--secondary-color);
+    color: white;
+    padding: 0.2rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    margin-right: 0.5rem;
+}
 </style>
 {% endblock %}
 
@@ -200,6 +239,30 @@ async function downloadReport(reportPath) {
             window.URL.revokeObjectURL(url);
 
             showNotification('报告已下载', 'success');
+        }
+    } catch (error) {
+        // Error already handled by apiRequest
+    }
+}
+
+async function downloadRouteResult(reportPath) {
+    try {
+        // 获取路线热点结果
+        const data = await apiRequest(`/api/route-result/${reportPath}`);
+
+        if (data.success) {
+            // 创建 JSON Blob 并下载
+            const blob = new Blob([JSON.stringify(data.result, null, 2)], { type: 'application/json;charset=utf-8' });
+            const url = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = data.filename;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            window.URL.revokeObjectURL(url);
+
+            showNotification('路线结果已下载', 'success');
         }
     } catch (error) {
         // Error already handled by apiRequest

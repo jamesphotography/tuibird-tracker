@@ -107,7 +107,7 @@ app = BUNDLE(
     name='eBirdTracker.app',
     icon='eBirdTracker.icns' if os.path.exists('eBirdTracker.icns') else None,
     bundle_identifier='com.tuibird.tracker',
-    version='2.3.0',
+    version='0.4.1',
     info_plist={
         'NSPrincipalClass': 'NSApplication',
         'NSAppleScriptEnabled': False,

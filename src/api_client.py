@@ -228,6 +228,35 @@ class EBirdAPIClient:
         }
         return self._make_request(endpoint, params, timeout=30)
 
+    def get_nearby_hotspots(
+        self,
+        lat: float,
+        lng: float,
+        dist: int = 25,
+        back: int = 14
+    ) -> Optional[List[Dict]]:
+        """
+        获取指定GPS坐标附近的热点
+
+        Args:
+            lat: 纬度
+            lng: 经度
+            dist: 搜索半径（公里）
+            back: 最近N天有观测记录
+
+        Returns:
+            热点列表或None
+        """
+        endpoint = "ref/hotspot/geo"
+        params = {
+            'lat': lat,
+            'lng': lng,
+            'dist': dist,
+            'back': back,
+            'fmt': 'json'
+        }
+        return self._make_request(endpoint, params)
+
 
 # ==================== API Key管理 ====================
 

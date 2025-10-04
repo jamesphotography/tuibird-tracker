@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}区域查询 - TuiBird Tracker{% endblock %}
+{% block title %}区域查询 - 图忆鸟讯{% endblock %}
 
 {% block content %}
 <div class="region-container">
@@ -124,15 +124,6 @@
                 </div>
             </div>
 
-            <div class="form-group">
-                <label class="form-label">
-                    <i class="bi bi-list-ul"></i> 显示模式
-                </label>
-                <select id="displayMode" class="form-control">
-                    <option value="brief">简要模式 - 每个鸟种仅显示最新 5 条记录</option>
-                    <option value="full">完整模式 - 显示所有观察记录</option>
-                </select>
-            </div>
         </div>
 
         <!-- 快速位置选择 -->
@@ -544,8 +535,7 @@ async function startQuery() {
         lat: lat,
         lng: lng,
         radius: parseInt(document.getElementById('radius').value),
-        days_back: parseInt(document.getElementById('daysBack').value),
-        display_mode: document.getElementById('displayMode').value
+        days_back: parseInt(document.getElementById('daysBack').value)
     };
 
     try {
@@ -627,7 +617,6 @@ function resetForm() {
     document.getElementById('placeVerifyResult').style.display = 'none';
     document.getElementById('radius').value = 25;
     document.getElementById('daysBack').value = 14;
-    document.getElementById('displayMode').value = 'brief';
     updateRadiusDisplay(25);
     switchInputMethod('place');
 }

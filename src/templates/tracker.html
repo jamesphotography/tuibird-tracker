@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}物种追踪 - TuiBird Tracker{% endblock %}
+{% block title %}物种追踪 - 图忆鸟讯{% endblock %}
 
 {% block content %}
 <div class="tracker-container">
@@ -52,44 +52,26 @@
             <h3>查询参数</h3>
 
             <div class="form-group">
-                <label class="form-label">搜索模式</label>
-                <select id="searchMode" class="form-control" onchange="toggleSearchMode()">
-                    <option value="region">区域搜索 - 按行政区域查询</option>
-                    <option value="gps">GPS搜索 - 按坐标和半径查询</option>
+                <label class="form-label">
+                    <i class="bi bi-diagram-3"></i> 多物种分析模式
+                    <small class="text-muted">(仅在选择多个物种时生效)</small>
+                </label>
+                <select id="analysisMode" class="form-control">
+                    <option value="and" selected>同时出现 - 查找多个物种在同一地点共同出现的记录 (推荐，速度快)</option>
+                    <option value="or">任一物种 - 分别查询每个物种的所有观测记录</option>
                 </select>
             </div>
 
-            <!-- 区域搜索参数 -->
-            <div id="regionModeParams">
-                <div class="form-row">
-                    <div class="form-group">
-                        <label class="form-label">选择区域</label>
-                        <select id="regionCode" class="form-control">
-                            <option value="AU">澳大利亚全境</option>
-                            <option value="AU-NT">北领地 (NT)</option>
-                            <option value="AU-NSW">新南威尔士 (NSW)</option>
-                            <option value="AU-QLD">昆士兰 (QLD)</option>
-                            <option value="AU-WA">西澳大利亚 (WA)</option>
-                            <option value="AU-SA">南澳大利亚 (SA)</option>
-                            <option value="AU-VIC">维多利亚 (VIC)</option>
-                            <option value="AU-ACT">首都领地 (ACT)</option>
-                            <option value="AU-TAS">塔斯马尼亚 (TAS)</option>
-                        </select>
-                    </div>
-
-                    <div class="form-group">
-                        <label class="form-label">时间范围</label>
-                        <select id="daysBack" class="form-control">
-                            <option value="7">最近 7 天</option>
-                            <option value="14" selected>最近 14 天</option>
-                            <option value="30">最近 30 天</option>
-                        </select>
-                    </div>
-                </div>
+            <div class="form-group">
+                <label class="form-label">搜索模式</label>
+                <select id="searchMode" class="form-control" onchange="toggleSearchMode()">
+                    <option value="gps" selected>GPS搜索 - 按地点名称或坐标查询</option>
+                    <option value="region">区域搜索 - 按行政区域查询</option>
+                </select>
             </div>
 
-            <!-- GPS搜索参数 -->
-            <div id="gpsModeParams" style="display: none;">
+            <!-- GPS搜索参数（默认显示） -->
+            <div id="gpsModeParams">
                 <div class="form-group">
                     <label class="form-label">GPS 坐标或地点名称</label>
                     <div class="input-with-button">
@@ -143,6 +125,35 @@
                     </div>
                 </div>
             </div>
+
+            <!-- 区域搜索参数 -->
+            <div id="regionModeParams" style="display: none;">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">选择区域</label>
+                        <select id="regionCode" class="form-control">
+                            <option value="AU">澳大利亚全境</option>
+                            <option value="AU-NT">北领地 (NT)</option>
+                            <option value="AU-NSW">新南威尔士 (NSW)</option>
+                            <option value="AU-QLD">昆士兰 (QLD)</option>
+                            <option value="AU-WA">西澳大利亚 (WA)</option>
+                            <option value="AU-SA">南澳大利亚 (SA)</option>
+                            <option value="AU-VIC">维多利亚 (VIC)</option>
+                            <option value="AU-ACT">首都领地 (ACT)</option>
+                            <option value="AU-TAS">塔斯马尼亚 (TAS)</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">时间范围</label>
+                        <select id="daysBack" class="form-control">
+                            <option value="7">最近 7 天</option>
+                            <option value="14" selected>最近 14 天</option>
+                            <option value="30">最近 30 天</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <!-- 操作按钮 -->
@@ -165,8 +176,10 @@
 
 <style>
 .tracker-container {
-    max-width: 1000px;
-    margin: 0 auto;
+    width: 100%;
+    max-width: 100%;
+    margin: 0;
+    padding: 0 1rem;
 }
 
 .page-title {
@@ -628,9 +641,12 @@ async function startTracking() {
     }
 
     const searchMode = document.getElementById('searchMode').value;
+    const analysisMode = document.getElementById('analysisMode').value;
+
     const params = {
         species_codes: selectedSpeciesList.map(s => s.code),
-        species_names: selectedSpeciesList
+        species_names: selectedSpeciesList,
+        analysis_mode: analysisMode  // 添加分析模式参数
     };
 
     // 根据搜索模式准备参数
