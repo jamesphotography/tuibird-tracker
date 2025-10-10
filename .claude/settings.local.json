@@ -32,7 +32,19 @@
       "Bash(lsof:*)",
       "Bash(xargs kill:*)",
       "Bash(.venv/bin/pip:*)",
-      "Bash(git log:*)"
+      "Bash(git log:*)",
+      "Bash(find:*)",
+      "Bash(git rm:*)",
+      "Bash(for file in src/templates/*.html)",
+      "Bash(do)",
+      "Bash(if grep -q \"图忆鸟讯\" \"$file\")",
+      "Bash(then)",
+      "Bash(echo \"$file\")",
+      "Bash(fi)",
+      "Bash(done)",
+      "Read(//Users/jameszhenyu/Pictures/Flickr Photo/Bird ID Master_0.0.10_APKPure/assets/flutter_assets/data/**)",
+      "Read(//Users/jameszhenyu/Pictures/Flickr Photo/Bird ID Master_0.0.10_APKPure/assets/flutter_assets/**)",
+      "Read(//Users/jameszhenyu/Pictures/Flickr Photo/Bird ID Master_0.0.10_APKPure/assets/**)"
     ],
     "deny": [],
     "ask": []

@@ -53,3 +53,7 @@ temp/
 # Database backups
 *.sqlite-backup
 *.db-journal
+
+# Endemic bird data (generated files)
+data/country_mapping.json
+data/ebird_reference.sqlite

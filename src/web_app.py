@@ -478,6 +478,14 @@ def route():
                          version=VERSION)
 
 
+@app.route('/endemic')
+def endemic():
+    """特有种检索页面"""
+    return render_template('endemic.html',
+                         version=VERSION,
+                         build_date=BUILD_DATE)
+
+
 @app.route('/settings')
 def settings():
     """设置页面"""
@@ -1985,6 +1993,136 @@ def api_get_bird_info(bird_name):
             # 也缓存"未找到"的结果，避免重复查询
             api_cache.set(cache_key, response_data)
             return jsonify(response_data)
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/countries')
+def api_get_countries():
+    """获取所有国家列表（用于下拉选择）"""
+    try:
+        import sqlite3
+        db_path = os.path.join(os.path.dirname(__file__), '..', 'data', 'ebird_reference.sqlite')
+
+        if not os.path.exists(db_path):
+            return jsonify({'error': '特有种数据库未找到'}), 404
+
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+
+        # 只返回已验证的国家，按特有种数量排序
+        cursor.execute("""
+            SELECT country_id, country_name_cn, country_name_en, endemic_count, region
+            FROM countries
+            WHERE verified = 1
+            ORDER BY endemic_count DESC
+        """)
+
+        countries = []
+        for row in cursor.fetchall():
+            countries.append({
+                'country_id': row[0],
+                'country_name_cn': row[1],
+                'country_name_en': row[2],
+                'endemic_count': row[3],
+                'region': row[4]
+            })
+
+        conn.close()
+
+        return jsonify({
+            'success': True,
+            'countries': countries,
+            'total': len(countries)
+        })
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/endemic-birds/<country_name>')
+def api_get_endemic_birds(country_name):
+    """获取某个国家的特有鸟种列表"""
+    try:
+        import sqlite3
+
+        # 特有种数据库路径
+        endemic_db_path = os.path.join(os.path.dirname(__file__), '..', 'data', 'ebird_reference.sqlite')
+
+        if not os.path.exists(endemic_db_path):
+            return jsonify({'error': '特有种数据库未找到'}), 404
+
+        # 连接特有种数据库
+        conn = sqlite3.connect(endemic_db_path)
+        cursor = conn.cursor()
+
+        # 查询国家信息（支持中英文）
+        cursor.execute("""
+            SELECT country_id, country_name_cn, country_name_en, endemic_count, verified
+            FROM countries
+            WHERE country_name_cn LIKE ? OR country_name_en LIKE ?
+        """, (f"%{country_name}%", f"%{country_name}%"))
+
+        country = cursor.fetchone()
+
+        if not country:
+            conn.close()
+            return jsonify({'error': f'未找到国家: {country_name}'}), 404
+
+        country_id, cn_name, en_name, endemic_count, verified = country
+
+        # 查询该国特有鸟种ID
+        cursor.execute("""
+            SELECT bird_id
+            FROM endemic_birds
+            WHERE country_id = ?
+            ORDER BY bird_id
+        """, (country_id,))
+
+        bird_ids = [row[0] for row in cursor.fetchall()]
+        conn.close()
+
+        # 加载 birdinfo.json 获取鸟种详细信息
+        birdinfo_path = "/Users/jameszhenyu/Pictures/Flickr Photo/Bird ID Master_0.0.10_APKPure/assets/flutter_assets/data/birdinfo.json"
+
+        if not os.path.exists(birdinfo_path):
+            return jsonify({'error': 'birdinfo.json 未找到'}), 404
+
+        with open(birdinfo_path, 'r', encoding='utf-8') as f:
+            bird_info_list = json.load(f)
+
+        # 构建鸟种信息列表
+        endemic_birds = []
+        for bird_id in bird_ids:
+            # bird_id = index + 1
+            index = bird_id - 1
+            if 0 <= index < len(bird_info_list):
+                bird_data = bird_info_list[index]
+                if len(bird_data) >= 3:
+                    endemic_birds.append({
+                        'bird_id': bird_id,
+                        'cn_name': bird_data[0],
+                        'en_name': bird_data[1],
+                        'sci_name': bird_data[2]
+                    })
+
+        return jsonify({
+            'success': True,
+            'country': {
+                'country_id': country_id,
+                'country_name_cn': cn_name,
+                'country_name_en': en_name,
+                'endemic_count': endemic_count,
+                'verified': bool(verified)
+            },
+            'birds': endemic_birds,
+            'total_species': len(endemic_birds)
+        })
 
     except Exception as e:
         import traceback

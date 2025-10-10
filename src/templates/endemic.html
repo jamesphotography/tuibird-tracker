@@ -1,0 +1,549 @@
+{% extends "base.html" %}
+
+{% block title %}特有种检索 - 慧眼找鸟{% endblock %}
+
+{% block content %}
+<div class="endemic-container">
+    <h1 class="page-title">
+        <i class="bi bi-globe2"></i> 特有种检索
+    </h1>
+
+    <div class="endemic-card">
+        <p class="intro-text">
+            <i class="bi bi-info-circle"></i>
+            搜索全球各个国家的特有鸟种，了解不同地区的独特鸟类资源
+        </p>
+
+        <!-- 国家选择 -->
+        <div class="country-selection">
+            <h3><i class="bi bi-flag-fill"></i> 选择国家</h3>
+
+            <!-- 搜索框 -->
+            <div class="form-group">
+                <label class="form-label">国家名称（中文或英文）</label>
+                <div class="search-box">
+                    <input type="text"
+                           id="countrySearch"
+                           class="form-control"
+                           placeholder="例如: 中国、Australia、印度尼西亚"
+                           oninput="filterCountries(this.value)">
+                    <i class="bi bi-search search-icon"></i>
+                </div>
+                <small class="text-muted">
+                    <i class="bi bi-lightbulb"></i>
+                    已收录 <span id="totalCountries">--</span> 个国家的特有鸟种数据
+                </small>
+            </div>
+
+            <!-- 国家列表 -->
+            <div id="countryList" class="country-list">
+                <div class="loading-spinner">
+                    <i class="bi bi-hourglass-split"></i> 加载中...
+                </div>
+            </div>
+        </div>
+
+        <!-- 统计信息 -->
+        <div class="stats-panel" id="statsPanel" style="display: none;">
+            <h3><i class="bi bi-bar-chart-fill"></i> 特有种数量排行</h3>
+            <div id="statsContent"></div>
+        </div>
+    </div>
+
+    <!-- 结果显示 -->
+    <div id="resultsArea" style="display: none;">
+        <div class="results-header">
+            <h2 id="countryTitle"></h2>
+            <p id="countrySubtitle"></p>
+        </div>
+
+        <div class="birds-list-container">
+            <div class="list-controls">
+                <input type="text"
+                       id="birdFilter"
+                       class="form-control"
+                       placeholder="🔍 搜索鸟名（中文或英文）"
+                       oninput="filterBirds(this.value)">
+                <div class="view-options">
+                    <button onclick="selectAllBirds()" class="btn btn-sm btn-secondary">
+                        <i class="bi bi-check-all"></i> 全选
+                    </button>
+                    <button onclick="clearSelection()" class="btn btn-sm btn-secondary">
+                        <i class="bi bi-x-circle"></i> 清空
+                    </button>
+                    <button onclick="startTracking()" class="btn btn-sm btn-primary">
+                        <i class="bi bi-binoculars-fill"></i> 追踪已选鸟种
+                    </button>
+                </div>
+            </div>
+
+            <div id="birdsListContent" class="birds-list"></div>
+        </div>
+    </div>
+</div>
+
+<style>
+.endemic-container {
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+.page-title {
+    font-size: 2.5rem;
+    margin-bottom: 2rem;
+    color: var(--primary-color);
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.endemic-card {
+    background: var(--card-bg);
+    padding: 2rem;
+    border-radius: 12px;
+    box-shadow: var(--shadow-sm);
+    margin-bottom: 2rem;
+}
+
+.intro-text {
+    background: linear-gradient(135deg, #e3f2fd, #f0f4ff);
+    padding: 1rem 1.5rem;
+    border-radius: 8px;
+    margin-bottom: 2rem;
+    color: var(--text-dark);
+    border-left: 4px solid var(--secondary-color);
+}
+
+.country-selection h3,
+.stats-panel h3 {
+    font-size: 1.3rem;
+    margin-bottom: 1.5rem;
+    color: var(--primary-color);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.search-box {
+    position: relative;
+}
+
+.search-box .search-icon {
+    position: absolute;
+    right: 1rem;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-light);
+    font-size: 1.2rem;
+    pointer-events: none;
+}
+
+.country-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 1rem;
+    margin-top: 1.5rem;
+    max-height: 500px;
+    overflow-y: auto;
+}
+
+.country-item {
+    background: white;
+    padding: 1.25rem;
+    border: 2px solid var(--border-color);
+    border-radius: 10px;
+    cursor: pointer;
+    transition: var(--transition);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.country-item:hover {
+    border-color: var(--secondary-color);
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+}
+
+.country-item.hidden {
+    display: none;
+}
+
+.country-info {
+    flex: 1;
+}
+
+.country-name-cn {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--text-dark);
+    margin-bottom: 0.3rem;
+}
+
+.country-name-en {
+    font-size: 0.9rem;
+    color: var(--text-light);
+}
+
+.endemic-count {
+    background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+    color: white;
+    padding: 0.5rem 1rem;
+    border-radius: 20px;
+    font-weight: 600;
+    font-size: 0.9rem;
+    white-space: nowrap;
+}
+
+.stats-panel {
+    margin-top: 2rem;
+    padding-top: 2rem;
+    border-top: 1px solid var(--border-color);
+}
+
+.stats-content {
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.results-header {
+    background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+    color: white;
+    padding: 2rem;
+    border-radius: 12px;
+    margin-bottom: 2rem;
+    box-shadow: var(--shadow-md);
+}
+
+.results-header h2 {
+    margin: 0 0 0.5rem 0;
+    font-size: 2rem;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.results-header p {
+    margin: 0;
+    font-size: 1.1rem;
+    opacity: 0.95;
+}
+
+.birds-list-container {
+    background: var(--card-bg);
+    padding: 2rem;
+    border-radius: 12px;
+    box-shadow: var(--shadow-sm);
+}
+
+.list-controls {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+    flex-wrap: wrap;
+}
+
+.list-controls .form-control {
+    flex: 1;
+    min-width: 250px;
+}
+
+.view-options {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.birds-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+    gap: 1rem;
+    max-height: 600px;
+    overflow-y: auto;
+}
+
+.bird-item {
+    background: white;
+    padding: 1rem;
+    border: 2px solid var(--border-color);
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    transition: var(--transition);
+    cursor: pointer;
+}
+
+.bird-item:hover {
+    border-color: var(--secondary-color);
+    background: #f8f9fa;
+}
+
+.bird-item.selected {
+    border-color: var(--primary-color);
+    background: #e3f2fd;
+}
+
+.bird-item.hidden {
+    display: none;
+}
+
+.bird-checkbox {
+    width: 20px;
+    height: 20px;
+    cursor: pointer;
+}
+
+.bird-info-box {
+    flex: 1;
+    min-width: 0;
+}
+
+.bird-name-cn {
+    font-size: 1.05rem;
+    font-weight: 600;
+    color: var(--text-dark);
+    margin-bottom: 0.2rem;
+}
+
+.bird-name-en {
+    font-size: 0.85rem;
+    color: var(--text-light);
+}
+
+.loading-spinner {
+    text-align: center;
+    padding: 3rem;
+    color: var(--text-light);
+    font-size: 1.2rem;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.country-item,
+.bird-item {
+    animation: fadeIn 0.3s ease-in-out;
+}
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let allCountries = [];
+let currentBirds = [];
+let selectedBirds = new Set();
+
+// 页面加载时获取国家列表
+document.addEventListener('DOMContentLoaded', async function() {
+    await loadCountries();
+});
+
+async function loadCountries() {
+    try {
+        const data = await apiRequest('/api/countries');
+
+        if (data.success) {
+            allCountries = data.countries;
+            renderCountries(allCountries);
+
+            // 更新统计信息
+            document.getElementById('totalCountries').textContent = data.total;
+
+            // 显示排行榜
+            renderStats(allCountries.slice(0, 5));
+        }
+    } catch (error) {
+        document.getElementById('countryList').innerHTML =
+            '<div class="error-message"><i class="bi bi-exclamation-triangle"></i> 加载失败，请刷新页面重试</div>';
+    }
+}
+
+function renderCountries(countries) {
+    const listDiv = document.getElementById('countryList');
+
+    if (countries.length === 0) {
+        listDiv.innerHTML = '<p class="text-muted">未找到匹配的国家</p>';
+        return;
+    }
+
+    listDiv.innerHTML = countries.map(country => `
+        <div class="country-item" onclick="loadEndemicBirds('${country.country_name_cn}')">
+            <div class="country-info">
+                <div class="country-name-cn">${country.country_name_cn}</div>
+                <div class="country-name-en">${country.country_name_en}</div>
+            </div>
+            <div class="endemic-count">
+                ${country.endemic_count} 种
+            </div>
+        </div>
+    `).join('');
+}
+
+function filterCountries(searchTerm) {
+    if (!searchTerm.trim()) {
+        renderCountries(allCountries);
+        return;
+    }
+
+    const filtered = allCountries.filter(country =>
+        country.country_name_cn.includes(searchTerm) ||
+        country.country_name_en.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+
+    renderCountries(filtered);
+}
+
+function renderStats(topCountries) {
+    const statsContent = document.getElementById('statsContent');
+    const statsPanel = document.getElementById('statsPanel');
+
+    statsContent.innerHTML = topCountries.map((country, index) => `
+        <div style="flex: 1; min-width: 200px; text-align: center; padding: 1rem; background: white; border-radius: 8px; border: 2px solid var(--border-color);">
+            <div style="font-size: 2rem; font-weight: bold; color: var(--primary-color);">#${index + 1}</div>
+            <div style="font-weight: 600; margin: 0.5rem 0;">${country.country_name_cn}</div>
+            <div style="color: var(--text-light);">${country.endemic_count} 种</div>
+        </div>
+    `).join('');
+
+    statsPanel.style.display = 'block';
+}
+
+async function loadEndemicBirds(countryName) {
+    try {
+        showNotification(`正在加载 ${countryName} 的特有鸟种...`, 'info');
+
+        const data = await apiRequest(`/api/endemic-birds/${encodeURIComponent(countryName)}`);
+
+        if (data.success) {
+            currentBirds = data.birds;
+            selectedBirds.clear();
+
+            // 更新标题
+            document.getElementById('countryTitle').innerHTML =
+                `<i class="bi bi-flag-fill"></i> ${data.country.country_name_cn} (${data.country.country_name_en})`;
+            document.getElementById('countrySubtitle').textContent =
+                `共有 ${data.total_species} 种特有鸟类`;
+
+            // 渲染鸟种列表
+            renderBirds(currentBirds);
+
+            // 显示结果区域
+            document.getElementById('resultsArea').style.display = 'block';
+
+            // 滚动到结果
+            document.getElementById('resultsArea').scrollIntoView({ behavior: 'smooth' });
+
+            showNotification(`加载成功！找到 ${data.total_species} 种特有鸟`, 'success');
+        }
+    } catch (error) {
+        // Error already handled
+    }
+}
+
+function renderBirds(birds) {
+    const listDiv = document.getElementById('birdsListContent');
+
+    if (birds.length === 0) {
+        listDiv.innerHTML = '<p class="text-muted">未找到鸟种</p>';
+        return;
+    }
+
+    listDiv.innerHTML = birds.map((bird, index) => `
+        <div class="bird-item" data-index="${index}" onclick="toggleBirdSelection(${index})">
+            <input type="checkbox"
+                   class="bird-checkbox"
+                   id="bird-${index}"
+                   onchange="event.stopPropagation(); toggleBirdSelection(${index})">
+            <div class="bird-info-box">
+                <div class="bird-name-cn">${bird.cn_name}</div>
+                <div class="bird-name-en">${bird.en_name}</div>
+            </div>
+        </div>
+    `).join('');
+}
+
+function toggleBirdSelection(index) {
+    const checkbox = document.getElementById(`bird-${index}`);
+    const item = checkbox.parentElement;
+
+    if (selectedBirds.has(index)) {
+        selectedBirds.delete(index);
+        checkbox.checked = false;
+        item.classList.remove('selected');
+    } else {
+        selectedBirds.add(index);
+        checkbox.checked = true;
+        item.classList.add('selected');
+    }
+}
+
+function selectAllBirds() {
+    const visibleBirds = document.querySelectorAll('.bird-item:not(.hidden)');
+
+    visibleBirds.forEach((item) => {
+        const index = parseInt(item.dataset.index);
+        selectedBirds.add(index);
+        item.querySelector('.bird-checkbox').checked = true;
+        item.classList.add('selected');
+    });
+
+    showNotification(`已选择 ${selectedBirds.size} 种鸟`, 'success');
+}
+
+function clearSelection() {
+    selectedBirds.clear();
+
+    document.querySelectorAll('.bird-checkbox').forEach(checkbox => {
+        checkbox.checked = false;
+        checkbox.parentElement.classList.remove('selected');
+    });
+
+    showNotification('已清空选择', 'info');
+}
+
+function filterBirds(searchTerm) {
+    const items = document.querySelectorAll('.bird-item');
+
+    if (!searchTerm.trim()) {
+        items.forEach(item => item.classList.remove('hidden'));
+        return;
+    }
+
+    items.forEach(item => {
+        const cnName = item.querySelector('.bird-name-cn').textContent;
+        const enName = item.querySelector('.bird-name-en').textContent;
+
+        if (cnName.includes(searchTerm) || enName.toLowerCase().includes(searchTerm.toLowerCase())) {
+            item.classList.remove('hidden');
+        } else {
+            item.classList.add('hidden');
+        }
+    });
+}
+
+function startTracking() {
+    if (selectedBirds.size === 0) {
+        showNotification('请至少选择一种鸟', 'warning');
+        return;
+    }
+
+    // 获取选中的鸟种名称
+    const selectedBirdNames = Array.from(selectedBirds).map(index => {
+        return currentBirds[index].cn_name;
+    });
+
+    // 将选中的鸟种名称保存到 localStorage
+    localStorage.setItem('preselectedBirds', JSON.stringify(selectedBirdNames));
+
+    showNotification(`已选择 ${selectedBirds.size} 种鸟，正在跳转到追踪页面...`, 'success');
+
+    // 跳转到追踪页面
+    setTimeout(() => {
+        window.location.href = '/tracker';
+    }, 500);
+}
+</script>
+{% endblock %}
