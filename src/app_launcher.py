@@ -15,17 +15,18 @@ def main():
         print("🚀 启动 eBird 追踪器...")
         print(f"📍 工作目录: {os.getcwd()}")
         print("")
-        
+
         # 直接导入并运行主程序模块
         # 这样可以确保所有依赖库都在同一个进程中
         import main as main_module
-        
+
         # 检查是否有main函数
         if hasattr(main_module, 'main'):
             main_module.main()
         else:
-            # 如果没有main函数，直接运行模块
-            exec(compile(open(os.path.join(sys._MEIPASS, 'main.py')).read(), 'main.py', 'exec'))
+            # 如果没有main函数，尝试直接运行模块
+            # 注意：避免使用exec()，这是不安全的做法
+            raise ImportError("main.py 缺少 main() 函数入口")
         
     except ImportError as e:
         error_msg = f"模块导入错误: {str(e)}"

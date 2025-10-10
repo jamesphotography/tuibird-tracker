@@ -37,6 +37,9 @@ output/
 *.log
 .tuibird_config.json
 config.json
+ebird_config.json
+**/ebird_config.json
+rate_limit.json
 
 # Environment variables
 .env

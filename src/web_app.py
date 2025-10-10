@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-图忆鸟讯 Web Application
+慧眼找鸟 Web Application
 基于 Flask 的 Web 界面
 """
 
@@ -1175,7 +1175,7 @@ def api_track():
                 f.write("\n")
 
             f.write("---\n\n")
-            f.write(f"*报告由 图忆鸟讯 Web V{VERSION} 生成*\n")
+            f.write(f"*报告由 慧眼找鸟 Web V{VERSION} 生成*\n")
             f.write("*数据由 eBird (www.ebird.org) 提供*\n")
 
         # 生成简单的结果摘要
@@ -1437,7 +1437,7 @@ def api_region_query():
                 f.write("\n")
 
             f.write("---\n\n")
-            f.write(f"*报告由 图忆鸟讯 Web V{VERSION} 生成*\n")
+            f.write(f"*报告由 慧眼找鸟 Web V{VERSION} 生成*\n")
             f.write("*数据由 eBird (www.ebird.org) 提供*\n")
 
         # 统计信息
@@ -2217,10 +2217,10 @@ def api_route_hotspots():
 if __name__ == '__main__':
     # 生产环境会使用 gunicorn，这里仅用于本地开发
     PORT = int(os.environ.get('PORT', 5001))  # 支持 Render 的 PORT 环境变量
-    DEBUG = os.environ.get('DEBUG', 'True').lower() == 'true'
+    DEBUG = os.environ.get('DEBUG', 'False').lower() == 'true'  # 默认关闭调试模式,仅开发环境启用
 
     print("=" * 60)
-    print(f"🦅 图忆鸟讯 Web App V{VERSION}")
+    print(f"🦅 慧眼找鸟 Web App V{VERSION}")
     print("=" * 60)
     print(f"🌐 启动 Web 服务器...")
     print(f"📍 访问地址: http://127.0.0.1:{PORT}")
