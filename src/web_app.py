@@ -2005,7 +2005,7 @@ def api_get_countries():
     """获取所有国家列表（用于下拉选择）"""
     try:
         import sqlite3
-        db_path = os.path.join(os.path.dirname(__file__), '..', 'data', 'ebird_reference.sqlite')
+        db_path = os.path.join(os.path.dirname(__file__), '..', 'ebird_reference.sqlite')
 
         if not os.path.exists(db_path):
             return jsonify({'error': '特有种数据库未找到'}), 404
@@ -2065,11 +2065,11 @@ def api_get_top_endemic_countries():
                 c.country_code,
                 c.country_name_en,
                 c.country_name_zh,
-                COUNT(sbc.id) as endemic_count
+                COUNT(eb.id) as endemic_count
             FROM countries c
-            JOIN special_bird_countries sbc ON c.country_id = sbc.country_id
-            WHERE sbc.is_endemic = 1
+            LEFT JOIN endemic_birds eb ON c.country_id = eb.country_id
             GROUP BY c.country_id
+            HAVING endemic_count > 0
             ORDER BY endemic_count DESC
             LIMIT 10
         """)
@@ -2130,34 +2130,17 @@ def api_get_endemic_birds(country_name):
 
         country_id, country_code, name_en, name_zh = country
 
-        # 获取特有种类别ID
-        cursor.execute("""
-            SELECT category_id FROM special_bird_categories
-            WHERE category_code = 'endemic'
-        """)
-        endemic_category = cursor.fetchone()
-
-        if not endemic_category:
-            conn.close()
-            return jsonify({'error': '特有种类别未找到'}), 500
-
-        endemic_category_id = endemic_category[0]
-
-        # 查询该国特有鸟种，联表获取正确的中英文名称
+        # 直接查询 endemic_birds 表
         cursor.execute("""
             SELECT
-                sb.id,
-                sb.scientific_name,
-                COALESCE(bci.chinese_simplified, sb.name_zh) as chinese_name,
-                COALESCE(bci.english_name, ioc.species_english, sb.name_en) as english_name
-            FROM special_birds sb
-            JOIN special_bird_countries sbc ON sb.id = sbc.bird_id
-            LEFT JOIN bird_ioc ioc ON sb.scientific_name = ioc.scientific_name
-            LEFT JOIN BirdCountInfo bci ON ioc.birdcount_info_id = bci.id
-            WHERE sbc.country_id = ? AND sbc.is_endemic = 1
-            AND sb.category_id = ?
-            ORDER BY sb.scientific_name
-        """, (country_id, endemic_category_id))
+                id,
+                scientific_name,
+                name_zh,
+                name_en
+            FROM endemic_birds
+            WHERE country_id = ?
+            ORDER BY scientific_name
+        """, (country_id,))
 
         # 构建鸟种信息列表
         endemic_birds = []
