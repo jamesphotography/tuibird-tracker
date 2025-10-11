@@ -29,6 +29,11 @@
                         id="coordsTab">
                     <i class="bi bi-geo-alt-fill"></i> GPS 坐标
                 </button>
+                <button onclick="switchInputMethod('admin')"
+                        class="tab-btn"
+                        id="adminTab">
+                    <i class="bi bi-map-fill"></i> 行政区域
+                </button>
             </div>
 
             <!-- 地点名称输入 -->
@@ -87,6 +92,33 @@
                         <span class="coords-label">经度:</span>
                         <span id="displayLng" class="coords-value">--</span>
                     </div>
+                </div>
+            </div>
+
+            <!-- 行政区域输入 -->
+            <div id="adminInput" class="input-panel" style="display: none;">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">
+                            <i class="bi bi-globe"></i> 选择国家
+                        </label>
+                        <select id="adminCountrySelect" class="form-control" onchange="loadAdminRegions()">
+                            <option value="">-- 请选择国家 --</option>
+                        </select>
+                        <small class="text-muted">
+                            <i class="bi bi-lightbulb"></i> 支持 253 个国家和地区
+                        </small>
+                    </div>
+                </div>
+
+                <div class="form-group" id="adminRegionSelectGroup" style="display: none;">
+                    <label class="form-label">
+                        <i class="bi bi-map"></i> 选择区域
+                        <small class="text-muted">(可选，不选则查询整个国家的中心点附近)</small>
+                    </label>
+                    <select id="adminRegionSelect" class="form-control">
+                        <option value="">-- 请先选择国家 --</option>
+                    </select>
                 </div>
             </div>
         </div>
@@ -376,10 +408,12 @@ function switchInputMethod(method) {
     // 更新标签页状态
     document.getElementById('placeTab').classList.toggle('active', method === 'place');
     document.getElementById('coordsTab').classList.toggle('active', method === 'coords');
+    document.getElementById('adminTab').classList.toggle('active', method === 'admin');
 
     // 切换输入面板
     document.getElementById('placeInput').style.display = method === 'place' ? 'block' : 'none';
     document.getElementById('coordsInput').style.display = method === 'coords' ? 'block' : 'none';
+    document.getElementById('adminInput').style.display = method === 'admin' ? 'block' : 'none';
 }
 
 function parseCoordinates(input) {
@@ -516,7 +550,43 @@ async function startQuery() {
             return;
         }
 
+    } else if (currentInputMethod === 'admin') {
+        // 行政区域模式
+        const countryCode = document.getElementById('adminCountrySelect').value;
+        const regionCode = document.getElementById('adminRegionSelect').value;
+
+        if (!countryCode) {
+            showNotification('请先选择国家', 'warning');
+            return;
+        }
+
+        // 构建查询地点名称（使用区域代码或国家代码）
+        const locationCode = regionCode || countryCode;
+
+        // 使用 Geocoding API 转换行政区域为坐标
+        showNotification('正在查询区域坐标...', 'info');
+
+        try {
+            const geocodeData = await apiRequest('/api/geocode', {
+                method: 'POST',
+                body: JSON.stringify({ place_name: locationCode })
+            });
+
+            if (geocodeData.success) {
+                lat = geocodeData.latitude;
+                lng = geocodeData.longitude;
+                showNotification(`已定位到 ${geocodeData.display_name}`, 'success');
+            } else {
+                showNotification(geocodeData.error || '无法找到该区域', 'error');
+                return;
+            }
+        } catch (error) {
+            // Error already handled by apiRequest
+            return;
+        }
+
     } else {
+        // 坐标输入模式
         lat = parseFloat(document.getElementById('latitude').value);
         lng = parseFloat(document.getElementById('longitude').value);
 
@@ -615,6 +685,9 @@ function resetForm() {
     document.getElementById('longitude').value = '';
     document.getElementById('parsedCoords').style.display = 'none';
     document.getElementById('placeVerifyResult').style.display = 'none';
+    document.getElementById('adminCountrySelect').value = '';
+    document.getElementById('adminRegionSelect').innerHTML = '<option value="">-- 请先选择国家 --</option>';
+    document.getElementById('adminRegionSelectGroup').style.display = 'none';
     document.getElementById('radius').value = 25;
     document.getElementById('daysBack').value = 14;
     updateRadiusDisplay(25);
@@ -668,5 +741,78 @@ function viewReport(reportPath) {
     // 跳转到结果页面进行在线预览
     window.location.href = `/result/${reportPath}`;
 }
+
+// 加载所有国家列表
+async function loadCountries() {
+    try {
+        const data = await apiRequest('/api/ebird/countries');
+
+        if (data.success && data.countries) {
+            const select = document.getElementById('adminCountrySelect');
+
+            data.countries.forEach(country => {
+                const displayName = country.name_zh || country.name_en;
+                const option = document.createElement('option');
+                option.value = country.code;
+                option.textContent = `${displayName} (${country.code})`;
+                select.appendChild(option);
+            });
+
+            console.log(`已加载 ${data.countries.length} 个国家`);
+        }
+    } catch (error) {
+        console.error('加载国家列表失败:', error);
+    }
+}
+
+// 根据国家加载区域列表
+async function loadAdminRegions() {
+    const countryCode = document.getElementById('adminCountrySelect').value;
+    const regionSelectGroup = document.getElementById('adminRegionSelectGroup');
+    const regionSelect = document.getElementById('adminRegionSelect');
+
+    if (!countryCode) {
+        regionSelectGroup.style.display = 'none';
+        regionSelect.innerHTML = '<option value="">-- 请先选择国家 --</option>';
+        return;
+    }
+
+    try {
+        const data = await apiRequest(`/api/ebird/regions/${countryCode}`);
+
+        if (data.success) {
+            regionSelect.innerHTML = '';
+
+            // 添加"不限"选项（使用国家中心点）
+            const wholeCountryOption = document.createElement('option');
+            wholeCountryOption.value = '';
+            wholeCountryOption.textContent = '不限区域（使用国家中心点）';
+            regionSelect.appendChild(wholeCountryOption);
+
+            // 添加各区域
+            if (data.regions && data.regions.length > 0) {
+                data.regions.forEach(region => {
+                    const displayName = region.name_zh || region.name_en;
+                    const option = document.createElement('option');
+                    option.value = region.code;
+                    option.textContent = displayName;
+                    regionSelect.appendChild(option);
+                });
+
+                regionSelectGroup.style.display = 'block';
+            } else {
+                // 该国家没有下级区域
+                regionSelectGroup.style.display = 'none';
+            }
+        }
+    } catch (error) {
+        console.error('加载区域列表失败:', error);
+    }
+}
+
+// 页面加载时获取国家列表
+document.addEventListener('DOMContentLoaded', async function() {
+    await loadCountries();
+});
 </script>
 {% endblock %}

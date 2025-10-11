@@ -130,18 +130,15 @@
             <div id="regionModeParams" style="display: none;">
                 <div class="form-row">
                     <div class="form-group">
-                        <label class="form-label">选择区域</label>
-                        <select id="regionCode" class="form-control">
-                            <option value="AU">澳大利亚全境</option>
-                            <option value="AU-NT">北领地 (NT)</option>
-                            <option value="AU-NSW">新南威尔士 (NSW)</option>
-                            <option value="AU-QLD">昆士兰 (QLD)</option>
-                            <option value="AU-WA">西澳大利亚 (WA)</option>
-                            <option value="AU-SA">南澳大利亚 (SA)</option>
-                            <option value="AU-VIC">维多利亚 (VIC)</option>
-                            <option value="AU-ACT">首都领地 (ACT)</option>
-                            <option value="AU-TAS">塔斯马尼亚 (TAS)</option>
+                        <label class="form-label">
+                            <i class="bi bi-globe"></i> 选择国家
+                        </label>
+                        <select id="countrySelect" class="form-control" onchange="loadRegions()">
+                            <option value="">-- 请选择国家 --</option>
                         </select>
+                        <small class="text-muted">
+                            <i class="bi bi-lightbulb"></i> 支持 253 个国家和地区
+                        </small>
                     </div>
 
                     <div class="form-group">
@@ -152,6 +149,16 @@
                             <option value="30">最近 30 天</option>
                         </select>
                     </div>
+                </div>
+
+                <div class="form-group" id="regionSelectGroup" style="display: none;">
+                    <label class="form-label">
+                        <i class="bi bi-map"></i> 选择区域
+                        <small class="text-muted">(可选，不选则查询整个国家)</small>
+                    </label>
+                    <select id="regionCode" class="form-control">
+                        <option value="">-- 请先选择国家 --</option>
+                    </select>
                 </div>
             </div>
         </div>
@@ -464,6 +471,94 @@
 let selectedMode = 'single';
 let selectedSpeciesList = [];
 
+// 页面加载时检查是否有从endemic页面传递过来的数据
+document.addEventListener('DOMContentLoaded', async function() {
+    // 加载国家列表
+    await loadCountries();
+
+    const endemicData = localStorage.getItem('endemicTrackingData');
+
+    if (endemicData) {
+        try {
+            const data = JSON.parse(endemicData);
+
+            // 如果有鸟种数据
+            if (data.birds && data.birds.length > 0) {
+                // 切换到多物种模式
+                if (data.birds.length > 1) {
+                    selectMode('multi');
+                }
+
+                // 显示提示
+                showNotification(`已从${data.country || '特有种检索'}加载 ${data.birds.length} 种鸟，正在搜索鸟种代码...`, 'info');
+
+                // 批量搜索鸟种代码，传递完整的data
+                await loadBirdsByNames(data.birds, data.country, data);
+            }
+
+            // 清除localStorage中的数据（只使用一次）
+            localStorage.removeItem('endemicTrackingData');
+        } catch (error) {
+            console.error('解析endemic数据失败:', error);
+        }
+    }
+});
+
+// 根据鸟名列表加载鸟种
+async function loadBirdsByNames(birdNames, countryName, endemicData) {
+    for (const birdName of birdNames) {
+        try {
+            // 搜索鸟种
+            const data = await apiRequest('/api/search_species', {
+                method: 'POST',
+                body: JSON.stringify({ query: birdName })
+            });
+
+            if (data.results && data.results.length > 0) {
+                // 取第一个匹配结果
+                const bird = data.results[0];
+                const code = bird.code || bird.ebird_code;
+
+                // 检查是否已选择
+                if (!selectedSpeciesList.find(s => s.code === code)) {
+                    selectedSpeciesList.push({
+                        code: code,
+                        cn_name: bird.cn_name || bird.chinese_simplified,
+                        en_name: bird.en_name || bird.english_name
+                    });
+                }
+            }
+        } catch (error) {
+            console.error(`加载鸟种 ${birdName} 失败:`, error);
+        }
+    }
+
+    // 更新显示
+    updateSelectedDisplay();
+
+    // 如果来自特有种页面
+    if (endemicData && endemicData.fromEndemic && endemicData.countryCode) {
+        // 切换到区域搜索模式
+        document.getElementById('searchMode').value = 'region';
+        toggleSearchMode();
+
+        // 自动选择国家
+        document.getElementById('countrySelect').value = endemicData.countryCode;
+        await loadRegions();
+
+        showNotification(
+            `已从${countryName}加载 ${selectedSpeciesList.length} 种鸟，请选择区域后开始追踪`,
+            'success'
+        );
+    } else if (countryName) {
+        // 普通情况，填充到GPS搜索框
+        document.getElementById('gpsLocation').value = countryName;
+        showNotification(`已加载 ${selectedSpeciesList.length} 种鸟，建议输入具体地点或调整国家名称后开始追踪`, 'success');
+    } else {
+        showNotification(`已加载 ${selectedSpeciesList.length} 种鸟，请输入地点后开始追踪`, 'success');
+    }
+}
+
 function selectMode(mode) {
     selectedMode = mode;
 
@@ -652,8 +747,18 @@ async function startTracking() {
     // 根据搜索模式准备参数
     if (searchMode === 'region') {
         // 区域模式
+        const countryCode = document.getElementById('countrySelect').value;
+        const regionCode = document.getElementById('regionCode').value;
+
+        if (!countryCode) {
+            showNotification('请先选择国家', 'warning');
+            trackBtn.disabled = false;
+            trackBtn.innerHTML = '<i class="bi bi-play-circle-fill"></i> 开始追踪';
+            return;
+        }
+
         params.search_mode = 'region';
-        params.region_code = document.getElementById('regionCode').value;
+        params.region_code = regionCode || countryCode;  // 如果没选区域，使用国家代码
         params.days_back = parseInt(document.getElementById('daysBack').value);
     } else {
         // GPS模式
@@ -751,6 +856,76 @@ async function startTracking() {
 function viewReport(reportPath) {
     // 跳转到结果页面进行在线预览
     window.location.href = `/result/${reportPath}`;
+}
+
+// 加载所有国家列表
+async function loadCountries() {
+    try {
+        const data = await apiRequest('/api/ebird/countries');
+
+        if (data.success && data.countries) {
+            const select = document.getElementById('countrySelect');
+
+            data.countries.forEach(country => {
+                const displayName = country.name_zh || country.name_en;
+                const option = document.createElement('option');
+                option.value = country.code;
+                option.textContent = `${displayName} (${country.code})`;
+                select.appendChild(option);
+            });
+
+            console.log(`已加载 ${data.countries.length} 个国家`);
+        }
+    } catch (error) {
+        console.error('加载国家列表失败:', error);
+    }
+}
+
+// 根据选中的国家加载区域列表
+async function loadRegions() {
+    const countryCode = document.getElementById('countrySelect').value;
+    const regionSelectGroup = document.getElementById('regionSelectGroup');
+    const regionSelect = document.getElementById('regionCode');
+
+    if (!countryCode) {
+        regionSelectGroup.style.display = 'none';
+        regionSelect.innerHTML = '<option value="">-- 请先选择国家 --</option>';
+        return;
+    }
+
+    try {
+        const data = await apiRequest(`/api/ebird/regions/${countryCode}`);
+
+        if (data.success) {
+            regionSelect.innerHTML = '';
+
+            // 添加"全境"选项
+            const wholeCountryOption = document.createElement('option');
+            wholeCountryOption.value = countryCode;
+            wholeCountryOption.textContent = '该国全境';
+            regionSelect.appendChild(wholeCountryOption);
+
+            // 添加各区域
+            if (data.regions && data.regions.length > 0) {
+                data.regions.forEach(region => {
+                    const displayName = region.name_zh || region.name_en;
+                    const option = document.createElement('option');
+                    option.value = region.code;
+                    option.textContent = displayName;
+                    regionSelect.appendChild(option);
+                });
+
+                regionSelectGroup.style.display = 'block';
+                console.log(`已加载 ${data.regions.length} 个区域`);
+            } else {
+                // 如果没有区域，只显示全境选项
+                regionSelectGroup.style.display = 'block';
+            }
+        }
+    } catch (error) {
+        console.error('加载区域列表失败:', error);
+        regionSelect.innerHTML = '<option value="">加载失败，请重试</option>';
+    }
 }
 </script>
 {% endblock %}

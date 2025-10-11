@@ -2045,28 +2045,82 @@ def api_get_countries():
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/api/endemic/top-countries')
+def api_get_top_endemic_countries():
+    """获取特有鸟种最多的前10个国家"""
+    try:
+        import sqlite3
+
+        db_path = os.path.join(os.path.dirname(__file__), '..', 'ebird_reference.sqlite')
+
+        if not os.path.exists(db_path):
+            return jsonify({'error': '数据库未找到'}), 404
+
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+
+        # 查询特有种最多的前10个国家
+        cursor.execute("""
+            SELECT
+                c.country_code,
+                c.country_name_en,
+                c.country_name_zh,
+                COUNT(sbc.id) as endemic_count
+            FROM countries c
+            JOIN special_bird_countries sbc ON c.country_id = sbc.country_id
+            WHERE sbc.is_endemic = 1
+            GROUP BY c.country_id
+            ORDER BY endemic_count DESC
+            LIMIT 10
+        """)
+
+        countries = []
+        for row in cursor.fetchall():
+            code, name_en, name_zh, count = row
+            countries.append({
+                'country_code': code,
+                'country_name_en': name_en,
+                'country_name_zh': name_zh if name_zh else name_en,
+                'endemic_count': count
+            })
+
+        conn.close()
+
+        return jsonify({
+            'success': True,
+            'countries': countries
+        })
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/api/endemic-birds/<country_name>')
 def api_get_endemic_birds(country_name):
     """获取某个国家的特有鸟种列表"""
     try:
         import sqlite3
 
-        # 特有种数据库路径
-        endemic_db_path = os.path.join(os.path.dirname(__file__), '..', 'data', 'ebird_reference.sqlite')
+        # 数据库路径
+        db_path = os.path.join(os.path.dirname(__file__), '..', 'ebird_reference.sqlite')
 
-        if not os.path.exists(endemic_db_path):
+        if not os.path.exists(db_path):
             return jsonify({'error': '特有种数据库未找到'}), 404
 
-        # 连接特有种数据库
-        conn = sqlite3.connect(endemic_db_path)
+        # 连接数据库
+        conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
 
-        # 查询国家信息（支持中英文）
+        # 查询国家信息（支持中英文和国家代码）
         cursor.execute("""
-            SELECT country_id, country_name_cn, country_name_en, endemic_count, verified
+            SELECT country_id, country_code, country_name_en, country_name_zh
             FROM countries
-            WHERE country_name_cn LIKE ? OR country_name_en LIKE ?
-        """, (f"%{country_name}%", f"%{country_name}%"))
+            WHERE country_name_zh LIKE ?
+               OR country_name_en LIKE ?
+               OR country_code LIKE ?
+        """, (f"%{country_name}%", f"%{country_name}%", f"%{country_name}%"))
 
         country = cursor.fetchone()
 
@@ -2074,54 +2128,159 @@ def api_get_endemic_birds(country_name):
             conn.close()
             return jsonify({'error': f'未找到国家: {country_name}'}), 404
 
-        country_id, cn_name, en_name, endemic_count, verified = country
+        country_id, country_code, name_en, name_zh = country
 
-        # 查询该国特有鸟种ID
+        # 获取特有种类别ID
         cursor.execute("""
-            SELECT bird_id
-            FROM endemic_birds
-            WHERE country_id = ?
-            ORDER BY bird_id
-        """, (country_id,))
+            SELECT category_id FROM special_bird_categories
+            WHERE category_code = 'endemic'
+        """)
+        endemic_category = cursor.fetchone()
 
-        bird_ids = [row[0] for row in cursor.fetchall()]
-        conn.close()
+        if not endemic_category:
+            conn.close()
+            return jsonify({'error': '特有种类别未找到'}), 500
 
-        # 加载 birdinfo.json 获取鸟种详细信息
-        birdinfo_path = "/Users/jameszhenyu/Pictures/Flickr Photo/Bird ID Master_0.0.10_APKPure/assets/flutter_assets/data/birdinfo.json"
+        endemic_category_id = endemic_category[0]
 
-        if not os.path.exists(birdinfo_path):
-            return jsonify({'error': 'birdinfo.json 未找到'}), 404
-
-        with open(birdinfo_path, 'r', encoding='utf-8') as f:
-            bird_info_list = json.load(f)
+        # 查询该国特有鸟种，联表获取正确的中英文名称
+        cursor.execute("""
+            SELECT
+                sb.id,
+                sb.scientific_name,
+                COALESCE(bci.chinese_simplified, sb.name_zh) as chinese_name,
+                COALESCE(bci.english_name, ioc.species_english, sb.name_en) as english_name
+            FROM special_birds sb
+            JOIN special_bird_countries sbc ON sb.id = sbc.bird_id
+            LEFT JOIN bird_ioc ioc ON sb.scientific_name = ioc.scientific_name
+            LEFT JOIN BirdCountInfo bci ON ioc.birdcount_info_id = bci.id
+            WHERE sbc.country_id = ? AND sbc.is_endemic = 1
+            AND sb.category_id = ?
+            ORDER BY sb.scientific_name
+        """, (country_id, endemic_category_id))
 
         # 构建鸟种信息列表
         endemic_birds = []
-        for bird_id in bird_ids:
-            # bird_id = index + 1
-            index = bird_id - 1
-            if 0 <= index < len(bird_info_list):
-                bird_data = bird_info_list[index]
-                if len(bird_data) >= 3:
-                    endemic_birds.append({
-                        'bird_id': bird_id,
-                        'cn_name': bird_data[0],
-                        'en_name': bird_data[1],
-                        'sci_name': bird_data[2]
-                    })
+        for row in cursor.fetchall():
+            bird_id, scientific_name, chinese_name, english_name = row
+
+            # 如果仍然缺少中文名或英文名，使用学名作为回退
+            display_cn = chinese_name if chinese_name else scientific_name
+            display_en = english_name if english_name else scientific_name
+
+            endemic_birds.append({
+                'bird_id': bird_id,
+                'sci_name': scientific_name,
+                'cn_name': display_cn,
+                'en_name': display_en
+            })
+
+        conn.close()
 
         return jsonify({
             'success': True,
             'country': {
-                'country_id': country_id,
-                'country_name_cn': cn_name,
-                'country_name_en': en_name,
-                'endemic_count': endemic_count,
-                'verified': bool(verified)
+                'country_code': country_code,
+                'country_name_en': name_en,
+                'country_name_zh': name_zh if name_zh else name_en,
+                'endemic_count': len(endemic_birds)
             },
             'birds': endemic_birds,
             'total_species': len(endemic_birds)
+        })
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/ebird/countries')
+def api_get_ebird_countries():
+    """获取所有 eBird 国家列表"""
+    try:
+        import sqlite3
+
+        db_path = os.path.join(os.path.dirname(__file__), '..', 'ebird_reference.sqlite')
+
+        if not os.path.exists(db_path):
+            return jsonify({'error': '数据库未找到'}), 404
+
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+
+        # 查询所有国家，按名称排序
+        cursor.execute("""
+            SELECT country_code, country_name_en, country_name_zh,
+                   has_regions, regions_count
+            FROM ebird_countries
+            ORDER BY country_name_en
+        """)
+
+        countries = []
+        for row in cursor.fetchall():
+            code, name_en, name_zh, has_regions, regions_count = row
+            countries.append({
+                'code': code,
+                'name_en': name_en,
+                'name_zh': name_zh,
+                'has_regions': bool(has_regions),
+                'regions_count': regions_count
+            })
+
+        conn.close()
+
+        return jsonify({
+            'success': True,
+            'countries': countries,
+            'total': len(countries)
+        })
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/ebird/regions/<country_code>')
+def api_get_ebird_regions(country_code):
+    """获取指定国家的区域列表"""
+    try:
+        import sqlite3
+
+        db_path = os.path.join(os.path.dirname(__file__), '..', 'ebird_reference.sqlite')
+
+        if not os.path.exists(db_path):
+            return jsonify({'error': '数据库未找到'}), 404
+
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+
+        # 查询该国家的所有区域
+        cursor.execute("""
+            SELECT er.region_code, er.region_name_en, er.region_name_zh
+            FROM ebird_regions er
+            JOIN ebird_countries ec ON er.country_id = ec.id
+            WHERE ec.country_code = ?
+            ORDER BY er.region_name_en
+        """, (country_code,))
+
+        regions = []
+        for row in cursor.fetchall():
+            region_code, region_name_en, region_name_zh = row
+            regions.append({
+                'code': region_code,
+                'name_en': region_name_en,
+                'name_zh': region_name_zh
+            })
+
+        conn.close()
+
+        return jsonify({
+            'success': True,
+            'country_code': country_code,
+            'regions': regions,
+            'total': len(regions)
         })
 
     except Exception as e:

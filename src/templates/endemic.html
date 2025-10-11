@@ -14,39 +14,38 @@
             搜索全球各个国家的特有鸟种，了解不同地区的独特鸟类资源
         </p>
 
-        <!-- 国家选择 -->
+        <!-- 国家搜索 -->
         <div class="country-selection">
-            <h3><i class="bi bi-flag-fill"></i> 选择国家</h3>
+            <h3><i class="bi bi-search"></i> 搜索国家</h3>
 
             <!-- 搜索框 -->
             <div class="form-group">
-                <label class="form-label">国家名称（中文或英文）</label>
+                <label class="form-label">输入国家名称（中文、英文或国家代码）</label>
                 <div class="search-box">
                     <input type="text"
                            id="countrySearch"
                            class="form-control"
-                           placeholder="例如: 中国、Australia、印度尼西亚"
-                           oninput="filterCountries(this.value)">
-                    <i class="bi bi-search search-icon"></i>
+                           placeholder="例如: 中国、CN、Australia、印度尼西亚、ID"
+                           onkeypress="handleSearchKeypress(event)">
+                    <button class="search-button" onclick="searchCountry()">
+                        <i class="bi bi-search"></i> 搜索
+                    </button>
                 </div>
                 <small class="text-muted">
                     <i class="bi bi-lightbulb"></i>
-                    已收录 <span id="totalCountries">--</span> 个国家的特有鸟种数据
+                    已收录全球 69 个国家的 2,949 种特有鸟类数据
                 </small>
             </div>
+        </div>
 
-            <!-- 国家列表 -->
-            <div id="countryList" class="country-list">
+        <!-- Top 10 国家展示 -->
+        <div class="top-countries-section">
+            <h3><i class="bi bi-trophy-fill"></i> 特有鸟种最多的10个国家</h3>
+            <div id="topCountriesList" class="top-countries-grid">
                 <div class="loading-spinner">
                     <i class="bi bi-hourglass-split"></i> 加载中...
                 </div>
             </div>
-        </div>
-
-        <!-- 统计信息 -->
-        <div class="stats-panel" id="statsPanel" style="display: none;">
-            <h3><i class="bi bi-bar-chart-fill"></i> 特有种数量排行</h3>
-            <div id="statsContent"></div>
         </div>
     </div>
 
@@ -115,7 +114,8 @@
 }
 
 .country-selection h3,
-.stats-panel h3 {
+.stats-panel h3,
+.top-countries-section h3 {
     font-size: 1.3rem;
     margin-bottom: 1.5rem;
     color: var(--primary-color);
@@ -124,27 +124,111 @@
     gap: 0.5rem;
 }
 
+.country-selection {
+    margin-bottom: 2.5rem;
+    padding-bottom: 2rem;
+    border-bottom: 2px solid var(--border-color);
+}
+
+.top-countries-section {
+    margin-top: 0;
+}
+
+.top-countries-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 1rem;
+}
+
+.top-country-card {
+    background: linear-gradient(135deg, #ffffff, #f8f9fa);
+    padding: 1.5rem;
+    border: 2px solid var(--border-color);
+    border-radius: 12px;
+    cursor: pointer;
+    transition: var(--transition);
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+}
+
+.top-country-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 4px;
+    background: linear-gradient(90deg, var(--primary-color), var(--secondary-color));
+}
+
+.top-country-card:hover {
+    transform: translateY(-5px);
+    box-shadow: var(--shadow-lg);
+    border-color: var(--secondary-color);
+}
+
+.country-rank {
+    font-size: 2.5rem;
+    font-weight: 800;
+    color: var(--primary-color);
+    line-height: 1;
+    margin-bottom: 0.5rem;
+}
+
+.country-flag {
+    font-size: 2rem;
+    margin-bottom: 0.5rem;
+}
+
+.country-name-main {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--text-dark);
+    margin-bottom: 0.3rem;
+}
+
+.country-name-sub {
+    font-size: 0.85rem;
+    color: var(--text-light);
+    margin-bottom: 0.75rem;
+}
+
+.country-species-count {
+    background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+    color: white;
+    padding: 0.5rem 1rem;
+    border-radius: 20px;
+    font-weight: 600;
+    font-size: 0.95rem;
+    display: inline-block;
+}
+
 .search-box {
     position: relative;
+    display: flex;
+    gap: 0.5rem;
 }
 
-.search-box .search-icon {
-    position: absolute;
-    right: 1rem;
-    top: 50%;
-    transform: translateY(-50%);
-    color: var(--text-light);
-    font-size: 1.2rem;
-    pointer-events: none;
+.search-box .form-control {
+    flex: 1;
 }
 
-.country-list {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-    gap: 1rem;
-    margin-top: 1.5rem;
-    max-height: 500px;
-    overflow-y: auto;
+.search-button {
+    background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+    color: white;
+    border: none;
+    padding: 0.75rem 1.5rem;
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: var(--transition);
+    white-space: nowrap;
+}
+
+.search-button:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
 }
 
 .country-item {
@@ -332,83 +416,66 @@
 
 {% block extra_js %}
 <script>
-let allCountries = [];
 let currentBirds = [];
 let selectedBirds = new Set();
+let currentCountry = null; // 保存当前选择的国家
 
-// 页面加载时获取国家列表
+// 页面加载时获取Top 10国家
 document.addEventListener('DOMContentLoaded', async function() {
-    await loadCountries();
+    await loadTopCountries();
 });
 
-async function loadCountries() {
+async function loadTopCountries() {
     try {
-        const data = await apiRequest('/api/countries');
+        const data = await apiRequest('/api/endemic/top-countries');
 
-        if (data.success) {
-            allCountries = data.countries;
-            renderCountries(allCountries);
-
-            // 更新统计信息
-            document.getElementById('totalCountries').textContent = data.total;
-
-            // 显示排行榜
-            renderStats(allCountries.slice(0, 5));
+        if (data.success && data.countries) {
+            renderTopCountries(data.countries);
         }
     } catch (error) {
-        document.getElementById('countryList').innerHTML =
+        document.getElementById('topCountriesList').innerHTML =
             '<div class="error-message"><i class="bi bi-exclamation-triangle"></i> 加载失败，请刷新页面重试</div>';
     }
 }
 
-function renderCountries(countries) {
-    const listDiv = document.getElementById('countryList');
+function renderTopCountries(countries) {
+    const listDiv = document.getElementById('topCountriesList');
 
     if (countries.length === 0) {
-        listDiv.innerHTML = '<p class="text-muted">未找到匹配的国家</p>';
+        listDiv.innerHTML = '<p class="text-muted">暂无数据</p>';
         return;
     }
 
-    listDiv.innerHTML = countries.map(country => `
-        <div class="country-item" onclick="loadEndemicBirds('${country.country_name_cn}')">
-            <div class="country-info">
-                <div class="country-name-cn">${country.country_name_cn}</div>
-                <div class="country-name-en">${country.country_name_en}</div>
-            </div>
-            <div class="endemic-count">
-                ${country.endemic_count} 种
+    listDiv.innerHTML = countries.map((country, index) => {
+        const displayName = country.country_name_zh || country.country_name_en;
+        return `
+        <div class="top-country-card" onclick="loadEndemicBirds('${country.country_code}')">
+            <div class="country-rank">#${index + 1}</div>
+            <div class="country-name-main">${displayName}</div>
+            <div class="country-name-sub">${country.country_name_en}</div>
+            <div class="country-species-count">
+                <i class="bi bi-star-fill"></i> ${country.endemic_count} 种
             </div>
         </div>
-    `).join('');
+    `}).join('');
 }
 
-function filterCountries(searchTerm) {
-    if (!searchTerm.trim()) {
-        renderCountries(allCountries);
+function handleSearchKeypress(event) {
+    if (event.key === 'Enter') {
+        searchCountry();
+    }
+}
+
+function searchCountry() {
+    const searchInput = document.getElementById('countrySearch');
+    const searchTerm = searchInput.value.trim();
+
+    if (!searchTerm) {
+        showNotification('请输入国家名称', 'warning');
         return;
     }
 
-    const filtered = allCountries.filter(country =>
-        country.country_name_cn.includes(searchTerm) ||
-        country.country_name_en.toLowerCase().includes(searchTerm.toLowerCase())
-    );
-
-    renderCountries(filtered);
-}
-
-function renderStats(topCountries) {
-    const statsContent = document.getElementById('statsContent');
-    const statsPanel = document.getElementById('statsPanel');
-
-    statsContent.innerHTML = topCountries.map((country, index) => `
-        <div style="flex: 1; min-width: 200px; text-align: center; padding: 1rem; background: white; border-radius: 8px; border: 2px solid var(--border-color);">
-            <div style="font-size: 2rem; font-weight: bold; color: var(--primary-color);">#${index + 1}</div>
-            <div style="font-weight: 600; margin: 0.5rem 0;">${country.country_name_cn}</div>
-            <div style="color: var(--text-light);">${country.endemic_count} 种</div>
-        </div>
-    `).join('');
-
-    statsPanel.style.display = 'block';
+    loadEndemicBirds(searchTerm);
 }
 
 async function loadEndemicBirds(countryName) {
@@ -419,11 +486,13 @@ async function loadEndemicBirds(countryName) {
 
         if (data.success) {
             currentBirds = data.birds;
+            currentCountry = data.country; // 保存国家信息
             selectedBirds.clear();
 
             // 更新标题
+            const countryDisplayName = data.country.country_name_zh || data.country.country_name_en;
             document.getElementById('countryTitle').innerHTML =
-                `<i class="bi bi-flag-fill"></i> ${data.country.country_name_cn} (${data.country.country_name_en})`;
+                `<i class="bi bi-flag-fill"></i> ${countryDisplayName} (${data.country.country_name_en})`;
             document.getElementById('countrySubtitle').textContent =
                 `共有 ${data.total_species} 种特有鸟类`;
 
@@ -535,8 +604,17 @@ function startTracking() {
         return currentBirds[index].cn_name;
     });
 
-    // 将选中的鸟种名称保存到 localStorage
-    localStorage.setItem('preselectedBirds', JSON.stringify(selectedBirdNames));
+    // 准备传递的数据
+    const trackingData = {
+        birds: selectedBirdNames,
+        country: currentCountry ? (currentCountry.country_name_zh || currentCountry.country_name_en) : null,
+        countryEn: currentCountry ? currentCountry.country_name_en : null,
+        countryCode: currentCountry ? currentCountry.country_code : null,
+        fromEndemic: true  // 标记来自特有种页面
+    };
+
+    // 将数据保存到 localStorage
+    localStorage.setItem('endemicTrackingData', JSON.stringify(trackingData));
 
     showNotification(`已选择 ${selectedBirds.size} 种鸟，正在跳转到追踪页面...`, 'success');
 
