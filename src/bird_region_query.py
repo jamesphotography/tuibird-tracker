@@ -85,11 +85,16 @@ def generate_region_report(species_groups, placename, radius, days_back, total_o
 
     # 生成文件名
     timestamp = datetime.datetime.now().strftime('%Y-%m-%d_%H%M%S')
-    report_type = "Complete" if show_all_records else "Brief"
-    if query_mode == "hotspot":
-        filename = f"Hotspot_{report_type}_{timestamp}.md"
+
+    if query_mode == "hotspot" and hotspot_info:
+        # 热点查询: 热点名_时间_热点观测.md
+        hotspot_name = hotspot_info.get('locName', 'Unknown').replace('/', '_').replace('\\', '_')
+        filename = f"{hotspot_name}_{timestamp}_热点观测.md"
     else:
-        filename = f"Birding_{report_type}_{timestamp}.md"
+        # 地理区域查询: 地点名_时间_区域观测.md
+        safe_placename = placename.replace('/', '_').replace('\\', '_')
+        filename = f"{safe_placename}_{timestamp}_区域观测.md"
+
     filepath = os.path.join(output_dir, filename)
 
     with open(filepath, 'w', encoding='utf-8') as f:

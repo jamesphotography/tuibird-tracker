@@ -480,8 +480,8 @@ def route():
 
 @app.route('/endemic')
 def endemic():
-    """特有种检索页面"""
-    return render_template('endemic.html',
+    """特有种检索页面（按洲分组）"""
+    return render_template('endemic_continents.html',
                          version=VERSION,
                          build_date=BUILD_DATE)
 
@@ -1023,7 +1023,7 @@ def api_track():
         else:
             species_str = "_".join(species_codes[:3])
 
-        filename = f"WebTracker_{species_str}_{timestamp}.md"
+        filename = f"{species_str}_{timestamp}_鸟讯.md"
         filepath = os.path.join(today_folder, filename)
 
         # 写入报告
@@ -1320,8 +1320,6 @@ def api_region_query():
         os.makedirs(today_folder, exist_ok=True)
 
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")
-        filename = f"WebRegion_{lat:.4f}_{lng:.4f}_{timestamp}.md"
-        filepath = os.path.join(today_folder, filename)
 
         # 反向地理编码获取地名
         location_name = None
@@ -1340,6 +1338,13 @@ def api_region_query():
                                address.get('state'))
         except Exception as e:
             print(f"反向地理编码失败: {e}")
+
+        # 生成文件名 (在获取地名之后)
+        if location_name:
+            filename = f"{location_name}_{timestamp}_区域鸟讯.md"
+        else:
+            filename = f"GPS_{lat:.4f}_{lng:.4f}_{timestamp}_区域鸟讯.md"
+        filepath = os.path.join(today_folder, filename)
 
         # 写入报告
         with open(filepath, 'w', encoding='utf-8') as f:
@@ -2013,11 +2018,16 @@ def api_get_countries():
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
 
-        # 只返回已验证的国家，按特有种数量排序
+        # 只返回有特有种的国家，按特有种数量排序
         cursor.execute("""
-            SELECT country_id, country_name_cn, country_name_en, endemic_count, region
-            FROM countries
-            WHERE verified = 1
+            SELECT
+                c.id as country_id,
+                c.country_name_zh as country_name_cn,
+                c.country_name_en,
+                COUNT(eb.id) as endemic_count
+            FROM ebird_countries c
+            JOIN endemic_birds eb ON c.id = eb.country_id
+            GROUP BY c.id
             ORDER BY endemic_count DESC
         """)
 
@@ -2028,7 +2038,7 @@ def api_get_countries():
                 'country_name_cn': row[1],
                 'country_name_en': row[2],
                 'endemic_count': row[3],
-                'region': row[4]
+                'region': ''  # region字段暂时为空，如果需要可以后续补充
             })
 
         conn.close()
@@ -2066,9 +2076,9 @@ def api_get_top_endemic_countries():
                 c.country_name_en,
                 c.country_name_zh,
                 COUNT(eb.id) as endemic_count
-            FROM countries c
-            LEFT JOIN endemic_birds eb ON c.country_id = eb.country_id
-            GROUP BY c.country_id
+            FROM ebird_countries c
+            LEFT JOIN endemic_birds eb ON c.id = eb.country_id
+            GROUP BY c.id
             HAVING endemic_count > 0
             ORDER BY endemic_count DESC
             LIMIT 10
@@ -2115,8 +2125,8 @@ def api_get_endemic_birds(country_name):
 
         # 查询国家信息（支持中英文和国家代码）
         cursor.execute("""
-            SELECT country_id, country_code, country_name_en, country_name_zh
-            FROM countries
+            SELECT id, country_code, country_name_en, country_name_zh
+            FROM ebird_countries
             WHERE country_name_zh LIKE ?
                OR country_name_en LIKE ?
                OR country_code LIKE ?
@@ -2170,6 +2180,65 @@ def api_get_endemic_birds(country_name):
             },
             'birds': endemic_birds,
             'total_species': len(endemic_birds)
+        })
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/endemic/countries-by-continent')
+def api_get_countries_by_continent():
+    """获取按大洲分组的所有有特有种的国家"""
+    try:
+        import sqlite3
+
+        # 数据库路径
+        db_path = os.path.join(os.path.dirname(__file__), '..', 'ebird_reference.sqlite')
+
+        if not os.path.exists(db_path):
+            return jsonify({'error': '数据库未找到'}), 404
+
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+
+        # 查询所有有特有种的国家，按洲分组
+        cursor.execute("""
+            SELECT
+                c.continent,
+                c.country_code,
+                c.country_name_en,
+                c.country_name_zh,
+                COUNT(eb.id) as endemic_count
+            FROM ebird_countries c
+            JOIN endemic_birds eb ON c.id = eb.country_id
+            GROUP BY c.id
+            HAVING endemic_count > 0
+            ORDER BY c.continent, endemic_count DESC
+        """)
+
+        # 按洲组织数据
+        continents = {}
+        for row in cursor.fetchall():
+            continent, code, name_en, name_zh, count = row
+
+            if continent not in continents:
+                continents[continent] = []
+
+            continents[continent].append({
+                'country_code': code,
+                'country_name_en': name_en,
+                'country_name_zh': name_zh if name_zh else name_en,
+                'endemic_count': count
+            })
+
+        conn.close()
+
+        return jsonify({
+            'success': True,
+            'continents': continents,
+            'total_countries': sum(len(countries) for countries in continents.values())
         })
 
     except Exception as e:
