@@ -131,7 +131,34 @@ def get_geolocator():
     """获取全局 Geolocator 单例"""
     global _geolocator
     if _geolocator is None:
-        _geolocator = Nominatim(user_agent="tuibird_tracker")
+        # 使用更详细的 user_agent,符合 OpenStreetMap 使用政策
+        # 添加超时设置和重试机制,提高在云环境(如 Render)中的连接成功率
+        from geopy.adapters import RequestsAdapter
+        from requests.adapters import HTTPAdapter
+        from urllib3.util.retry import Retry
+
+        # 配置重试策略
+        retry_strategy = Retry(
+            total=3,  # 总共重试3次
+            backoff_factor=1,  # 重试间隔: 1s, 2s, 4s
+            status_forcelist=[429, 500, 502, 503, 504],  # 这些状态码会触发重试
+            allowed_methods=["HEAD", "GET", "OPTIONS", "POST"]  # 允许重试的HTTP方法
+        )
+
+        # 创建自定义适配器工厂
+        def adapter_factory(proxies=None, ssl_context=None):
+            adapter = RequestsAdapter(proxies=proxies, ssl_context=ssl_context)
+            # 为 HTTP 和 HTTPS 设置重试策略
+            http_adapter = HTTPAdapter(max_retries=retry_strategy)
+            adapter.session.mount("http://", http_adapter)
+            adapter.session.mount("https://", http_adapter)
+            return adapter
+
+        _geolocator = Nominatim(
+            user_agent="TuiBird_Tracker/1.0 (https://github.com/jameszhenyu/tuibird-tracker; tuibird@example.com)",
+            adapter_factory=adapter_factory,
+            timeout=15
+        )
     return _geolocator
 
 
@@ -1649,19 +1676,26 @@ def api_geocode():
             return jsonify({'error': '地点名称不能为空'}), 400
 
         # 使用 Nominatim 地理编码服务
-        geolocator = get_geolocator()
+        try:
+            geolocator = get_geolocator()
+        except Exception as init_error:
+            print(f"初始化地理编码服务失败: {init_error}")
+            return jsonify({
+                'success': False,
+                'error': '地理编码服务初始化失败，请稍后重试或直接输入GPS坐标'
+            }), 503
 
         try:
             # 优先在澳大利亚范围内搜索
             location = geolocator.geocode(
                 place_name,
                 country_codes='au',
-                timeout=10
+                timeout=15
             )
 
             # 如果在澳大利亚没找到，扩大搜索范围
             if not location:
-                location = geolocator.geocode(place_name, timeout=10)
+                location = geolocator.geocode(place_name, timeout=15)
 
             if location:
                 return jsonify({
@@ -1678,15 +1712,27 @@ def api_geocode():
                 }), 404
 
         except GeocoderTimedOut:
+            print(f"地理编码超时: {place_name}")
             return jsonify({
                 'success': False,
-                'error': '地理编码服务超时，请稍后重试'
+                'error': '地理编码服务超时，请稍后重试或直接输入GPS坐标'
             }), 408
 
         except GeocoderServiceError as e:
+            print(f"地理编码服务错误: {e}")
             return jsonify({
                 'success': False,
-                'error': f'地理编码服务错误: {str(e)}'
+                'error': f'地理编码服务暂时不可用，请直接输入GPS坐标。错误详情: {str(e)}'
+            }), 503
+
+        except Exception as e:
+            # 捕获网络连接错误等其他异常
+            print(f"地理编码意外错误: {type(e).__name__}: {e}")
+            import traceback
+            traceback.print_exc()
+            return jsonify({
+                'success': False,
+                'error': f'地理编码服务遇到网络问题，请稍后重试或直接输入GPS坐标'
             }), 503
 
     except Exception as e:
