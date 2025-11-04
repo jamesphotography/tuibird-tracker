@@ -163,103 +163,167 @@ def get_geolocator():
 
 
 class RateLimiter:
-    """简单的速率限制器（基于文件存储，线程安全）"""
+    """
+    优化的速率限制器（内存缓存 + 后台持久化）
 
-    def __init__(self):
+    性能优化：
+    1. 内存存储：所有查询和写入都在内存中完成 O(1)
+    2. 后台持久化：每30秒自动保存一次到文件
+    3. 懒惰清理：查询时顺便清理过期记录
+    4. 启动加载：从文件恢复之前的限流状态
+
+    原时间复杂度：O(n) 每次请求读写文件
+    优化后：O(1) 内存操作，定期批量写入
+    """
+
+    def __init__(self, save_interval=30):
+        """
+        初始化限流器
+
+        :param save_interval: 自动保存间隔（秒），默认30秒
+        """
         import threading
+        from collections import defaultdict
+
         self.storage_file = get_resource_path('rate_limit.json')
-        self.data = {}
-        self._lock = threading.Lock()  # 线程锁
+        self.save_interval = save_interval
+        self._lock = threading.RLock()  # 递归锁，支持嵌套调用
+        self._dirty = False  # 标记是否有未保存的更改
+        self._shutdown = False  # 停止标志
 
-    def _load_data(self):
-        """加载限流数据（带线程锁）"""
+        # 使用 defaultdict 简化代码
+        self.data = defaultdict(lambda: {'requests': []})
+
+        # 启动时加载已有数据
+        self._load_data_on_startup()
+
+        # 启动后台保存线程
+        self._save_thread = threading.Thread(target=self._background_saver, daemon=True)
+        self._save_thread.start()
+
+        print(f"✓ RateLimiter 已启动（内存缓存模式，每{save_interval}秒自动保存）")
+
+    def _load_data_on_startup(self):
+        """启动时从文件加载数据"""
+        if not os.path.exists(self.storage_file):
+            print("✓ RateLimiter: 未找到已有限流数据，从空白开始")
+            return
+
+        try:
+            with open(self.storage_file, 'r') as f:
+                loaded_data = json.load(f)
+
+            # 转换为 defaultdict 并清理过期数据
+            now = time.time()
+            for ip, records in loaded_data.items():
+                # 只保留24小时内的记录
+                valid_requests = [r for r in records.get('requests', [])
+                                 if now - r < 86400]
+                if valid_requests:
+                    self.data[ip] = {'requests': valid_requests}
+
+            print(f"✓ RateLimiter: 已加载 {len(self.data)} 个IP的限流记录")
+        except Exception as e:
+            print(f"⚠ RateLimiter: 加载数据失败: {e}，从空白开始")
+
+    def _background_saver(self):
+        """后台线程：定期保存数据到文件"""
+        while not self._shutdown:
+            time.sleep(self.save_interval)
+
+            if self._dirty:
+                self._save_to_file()
+                self._dirty = False
+
+    def _save_to_file(self):
+        """保存数据到文件（原子写入）"""
         with self._lock:
-            if not os.path.exists(self.storage_file):
-                return {}
-
             try:
-                with open(self.storage_file, 'r') as f:
-                    return json.load(f)
-            except Exception as e:
-                print(f"加载限流数据失败: {e}")
-                return {}
+                # 转换 defaultdict 为普通 dict（用于 JSON 序列化）
+                data_to_save = dict(self.data)
 
-    def _save_data(self):
-        """保存限流数据（原子写入，防止文件损坏）"""
-        with self._lock:
-            try:
-                # 使用临时文件 + 原子替换，防止写入中断导致文件损坏
+                # 使用临时文件 + 原子替换
                 temp_file = self.storage_file + '.tmp'
                 with open(temp_file, 'w') as f:
-                    json.dump(self.data, f)
+                    json.dump(data_to_save, f)
                     f.flush()
-                    os.fsync(f.fileno())  # 确保写入磁盘
+                    os.fsync(f.fileno())
 
-                # 原子替换（在所有平台都是原子操作）
                 os.replace(temp_file, self.storage_file)
+
             except Exception as e:
-                print(f"保存限流数据失败: {e}")
-                # 清理临时文件
+                print(f"⚠ RateLimiter: 保存失败: {e}")
                 if os.path.exists(temp_file):
                     try:
                         os.remove(temp_file)
                     except:
                         pass
 
-    def _clean_old_data(self):
-        """清理过期数据（超过24小时）"""
+    def _clean_expired_requests(self, ip_address):
+        """懒惰清理：查询时顺便清理该IP的过期记录"""
         now = time.time()
-        to_delete = []
-        for ip, records in self.data.items():
-            records['requests'] = [r for r in records.get('requests', [])
-                                  if now - r < 86400]  # 保留24小时内的记录
-            if not records['requests']:
-                to_delete.append(ip)
+        day_ago = now - 86400
 
-        for ip in to_delete:
-            del self.data[ip]
+        # 过滤掉超过24小时的记录
+        requests = self.data[ip_address]['requests']
+        valid_requests = [r for r in requests if r > day_ago]
+
+        if len(valid_requests) < len(requests):
+            self.data[ip_address]['requests'] = valid_requests
+            self._dirty = True
 
     def check_limit(self, ip_address):
-        """检查IP是否超过限制（支持多进程）"""
-        # 每次都重新加载数据（支持多进程环境）
-        self.data = self._load_data()
-        self._clean_old_data()
+        """
+        检查IP是否超过限制（O(1) 内存查询）
 
-        now = time.time()
-        if ip_address not in self.data:
-            self.data[ip_address] = {'requests': []}
+        :param ip_address: IP地址
+        :return: 限制状态字典
+        """
+        with self._lock:
+            # 懒惰清理过期记录
+            self._clean_expired_requests(ip_address)
 
-        requests = self.data[ip_address]['requests']
+            now = time.time()
+            requests = self.data[ip_address]['requests']
 
-        # 检查小时限制
-        hour_ago = now - 3600
-        hourly_count = sum(1 for r in requests if r > hour_ago)
+            # 计算小时和日限制
+            hour_ago = now - 3600
+            hourly_count = sum(1 for r in requests if r > hour_ago)
+            daily_count = len(requests)  # 已经清理过期，剩下的都是24小时内的
 
-        # 检查日限制
-        day_ago = now - 86400
-        daily_count = sum(1 for r in requests if r > day_ago)
-
-        return {
-            'allowed': hourly_count < ANONYMOUS_LIMITS['hourly_limit'] and
-                      daily_count < ANONYMOUS_LIMITS['daily_limit'],
-            'hourly_remaining': max(0, ANONYMOUS_LIMITS['hourly_limit'] - hourly_count),
-            'daily_remaining': max(0, ANONYMOUS_LIMITS['daily_limit'] - daily_count),
-            'hourly_count': hourly_count,
-            'daily_count': daily_count
-        }
+            return {
+                'allowed': (hourly_count < ANONYMOUS_LIMITS['hourly_limit'] and
+                           daily_count < ANONYMOUS_LIMITS['daily_limit']),
+                'hourly_remaining': max(0, ANONYMOUS_LIMITS['hourly_limit'] - hourly_count),
+                'daily_remaining': max(0, ANONYMOUS_LIMITS['daily_limit'] - daily_count),
+                'hourly_count': hourly_count,
+                'daily_count': daily_count
+            }
 
     def record_request(self, ip_address):
-        """记录一次请求（原子操作，支持多进程）"""
-        # 重新加载最新数据
-        self.data = self._load_data()
+        """
+        记录一次请求（O(1) 内存写入）
 
-        if ip_address not in self.data:
-            self.data[ip_address] = {'requests': []}
+        :param ip_address: IP地址
+        """
+        with self._lock:
+            self.data[ip_address]['requests'].append(time.time())
+            self._dirty = True  # 标记为需要保存
 
-        self.data[ip_address]['requests'].append(time.time())
+    def force_save(self):
+        """强制立即保存（用于应用关闭时）"""
+        if self._dirty:
+            print("正在保存限流数据...")
+            self._save_to_file()
+            self._dirty = False
+            print("✓ 限流数据已保存")
 
-        # 立即保存（原子操作）
-        self._save_data()
+    def shutdown(self):
+        """优雅关闭：保存数据并停止后台线程"""
+        self._shutdown = True
+        self.force_save()
+        if self._save_thread.is_alive():
+            self._save_thread.join(timeout=2)
 
 
 # 全局限流器实例
@@ -388,76 +452,142 @@ def clean_old_reports(user_output_dir, days=7):
     return deleted_count
 
 
-def add_bird_name_links(html_content):
+# 全局缓存鸟名列表和正则模式，避免每次都查询数据库
+_bird_names_cache = None
+_bird_names_pattern = None
+_bird_names_cache_time = 0
+BIRD_NAMES_CACHE_TTL = 3600  # 缓存1小时
+
+def _get_bird_names_pattern():
     """
-    在HTML内容中为鸟名添加可点击链接
-    只链接中文鸟名，避免英文名中的特殊字符（括号、引号）造成显示错误
+    获取或构建鸟名正则模式（带缓存）
+
+    Returns:
+        tuple: (bird_names_list, compiled_pattern) 或 (None, None)
     """
+    global _bird_names_cache, _bird_names_pattern, _bird_names_cache_time
+
+    import time
+    current_time = time.time()
+
+    # 检查缓存是否有效
+    if (_bird_names_cache is not None and
+        _bird_names_pattern is not None and
+        current_time - _bird_names_cache_time < BIRD_NAMES_CACHE_TTL):
+        return _bird_names_cache, _bird_names_pattern
+
+    # 重新加载鸟名
     try:
         import re
         import sqlite3
-        from bs4 import BeautifulSoup
 
         db = init_database()
         if not db:
-            return html_content
+            return None, None
 
         # 获取所有中文鸟名
-        conn = sqlite3.connect(db.db_path)
-        cursor = conn.cursor()
-        cursor.execute("SELECT DISTINCT chinese_simplified FROM BirdCountInfo WHERE chinese_simplified != '' AND chinese_simplified IS NOT NULL")
-        bird_names = cursor.fetchall()
-        conn.close()
+        with sqlite3.connect(db.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT DISTINCT chinese_simplified
+                FROM BirdCountInfo
+                WHERE chinese_simplified != ''
+                  AND chinese_simplified IS NOT NULL
+                  AND length(chinese_simplified) >= 2
+            """)
+            bird_names = [row[0] for row in cursor.fetchall() if row[0]]
 
-        # 创建中文鸟名集合用于快速查找
-        bird_name_set = set()
-        for (cn_name,) in bird_names:
-            if cn_name and len(cn_name) >= 2:  # 中文名至少2个字
-                bird_name_set.add(cn_name)
+        if not bird_names:
+            return None, None
+
+        # 按长度降序排列（优先匹配长名字，避免短名字误匹配）
+        bird_names.sort(key=len, reverse=True)
+
+        # 构建单个正则表达式匹配所有鸟名
+        # 使用 | 连接所有鸟名，一次匹配完成
+        escaped_names = [re.escape(name) for name in bird_names]
+        # 边界条件：前后不能是汉字、字母、数字或HTML标签
+        pattern_str = r'(?<![\u4e00-\u9fa5a-zA-Z0-9>])(' + '|'.join(escaped_names) + r')(?![\u4e00-\u9fa5a-zA-Z0-9<])'
+        compiled_pattern = re.compile(pattern_str)
+
+        # 更新缓存
+        _bird_names_cache = bird_names
+        _bird_names_pattern = compiled_pattern
+        _bird_names_cache_time = current_time
+
+        print(f"✓ 已加载 {len(bird_names)} 个鸟名到缓存")
+        return bird_names, compiled_pattern
+
+    except Exception as e:
+        print(f"加载鸟名失败: {e}")
+        import traceback
+        traceback.print_exc()
+        return None, None
+
+
+def add_bird_name_links(html_content):
+    """
+    在HTML内容中为鸟名添加可点击链接（优化版本）
+
+    性能优化：
+    1. 使用单个正则表达式一次匹配所有鸟名（O(n×k) vs O(n×m×k)）
+    2. 缓存鸟名列表和正则模式，避免每次查询数据库
+    3. 使用 data 属性替代内联 JavaScript（更安全）
+
+    时间复杂度：O(n×k) 其中 n=节点数，k=文本长度
+    原复杂度：O(n×m×k) 其中 m=鸟名数量（1000+）
+    """
+    try:
+        import re
+        import html as html_lib
+        from bs4 import BeautifulSoup
+
+        # 获取缓存的鸟名模式
+        bird_names, pattern = _get_bird_names_pattern()
+        if not bird_names or not pattern:
+            return html_content
+
+        def replace_bird_name(match):
+            """正则替换回调函数"""
+            bird_name = match.group(1)
+            # 完全转义，防止XSS
+            escaped_name = html_lib.escape(bird_name, quote=True)
+            # 使用 data 属性而非内联 JavaScript
+            return f'<a href="#" class="bird-name-link" data-bird-name="{escaped_name}">{html_lib.escape(bird_name)}</a>'
 
         # 解析HTML
         soup = BeautifulSoup(html_content, 'html.parser')
 
-        # 处理所有文本节点（在 p, li, blockquote, td 等标签中）
+        # 处理所有文本节点（在 p, li, blockquote, td, dd 等标签中）
         for tag in soup.find_all(['p', 'li', 'blockquote', 'td', 'dd']):
-            # 遍历标签内的所有文本节点
+            # 遍历标签内的所有直接文本节点
             for text_node in tag.find_all(text=True, recursive=False):
+                # 跳过已经在链接中的文本
                 if text_node.parent.name == 'a':
-                    # 跳过已经在链接中的文本
                     continue
 
                 text = str(text_node)
-                modified_text = text
 
-                # 按长度降序排列鸟名，优先匹配长名字（避免短名字被误匹配）
-                for bird_name in sorted(bird_name_set, key=len, reverse=True):
-                    if bird_name in modified_text:
-                        # 使用正则替换，确保只替换独立的鸟名
-                        # 前后不能是汉字、字母、数字，避免误匹配（如"姬地鸠"不应匹配"戈氏姬地鸠"中的部分）
-                        # 同时避免替换HTML标签内的内容
-                        pattern = r'(?<![\u4e00-\u9fa5a-zA-Z0-9>])(?<!</a>)' + re.escape(bird_name) + r'(?![\u4e00-\u9fa5a-zA-Z0-9<])'
-                        # 转义单引号和双引号，避免JavaScript字符串错误
-                        escaped_bird_name = bird_name.replace("'", "\\'").replace('"', '\\"')
-                        link = f'<a href="javascript:void(0)" class="bird-name-link" onclick="showBirdInfo(\'{escaped_bird_name}\')">{bird_name}</a>'
-                        modified_text = re.sub(pattern, link, modified_text, count=1)  # 每个鸟名只替换第一次出现
+                # 使用预编译的正则模式，一次替换所有匹配的鸟名
+                modified_text = pattern.sub(replace_bird_name, text)
 
                 # 如果文本被修改，替换原节点
                 if modified_text != text:
-                    # 使用 BeautifulSoup 解析修改后的 HTML，保留所有内容
-                    from bs4 import NavigableString
+                    # 解析修改后的HTML
                     new_soup = BeautifulSoup(modified_text, 'html.parser')
-                    # 获取解析后的所有子节点（包括文本和标签）
                     replacement_nodes = list(new_soup.children)
+
                     if replacement_nodes:
-                        # 先插入第一个节点替换当前节点
+                        # 替换第一个节点
                         first_node = replacement_nodes[0]
                         text_node.replace_with(first_node)
-                        # 然后在第一个节点后面插入其余节点
+                        # 插入其余节点
                         for node in replacement_nodes[1:]:
                             first_node.insert_after(node)
                             first_node = node
 
         return str(soup)
+
     except Exception as e:
         print(f"添加鸟名链接失败: {e}")
         import traceback
@@ -754,14 +884,37 @@ def parse_dms_coordinate(dms_str):
     return None, None
 
 
-def check_checklist_for_species(client, sub_id, target_species_set, first_species_obs):
+def _build_subid_index(observations):
     """
-    检查清单是否包含所有目标物种（公共函数）
+    预构建 subId -> observation 的字典索引
+
+    性能优化：O(n) 构建索引，之后每次查询 O(1)
+    避免在每次 check_checklist_for_species 调用时进行 O(n) 线性查找
+
+    :param observations: 观测记录列表
+    :return: {sub_id: observation} 字典
+    """
+    subid_dict = {}
+    for obs in observations:
+        sub_id = obs.get('subId')
+        if sub_id and sub_id not in subid_dict:
+            # 保留第一个匹配的观测记录
+            subid_dict[sub_id] = obs
+    return subid_dict
+
+
+def check_checklist_for_species(client, sub_id, target_species_set, first_species_obs_dict):
+    """
+    检查清单是否包含所有目标物种（优化版本）
+
+    性能优化：
+    - 使用预构建的字典索引，查找从 O(n) 降低到 O(1)
+    - 添加异常超时处理
 
     :param client: eBird API 客户端
     :param sub_id: 清单ID
     :param target_species_set: 目标物种代码集合
-    :param first_species_obs: 第一个物种的观测记录列表
+    :param first_species_obs_dict: 预构建的 {sub_id: obs} 字典索引
     :return: 匹配的观测记录列表，如果不匹配则返回空列表
     """
     try:
@@ -780,13 +933,8 @@ def check_checklist_for_species(client, sub_id, target_species_set, first_specie
         if found_species != target_species_set:
             return []
 
-        # 构建索引以优化查找（避免重复遍历）
-        sub_id_to_obs = {}
-        for orig_obs in first_species_obs:
-            if orig_obs.get('subId') == sub_id:
-                sub_id_to_obs = orig_obs
-                break
-
+        # O(1) 字典查找，替代之前的 O(n) 线性查找
+        sub_id_to_obs = first_species_obs_dict.get(sub_id)
         if not sub_id_to_obs:
             return []
 
@@ -964,18 +1112,29 @@ def api_track():
                         if sub_id:
                             sub_ids_to_check.add(sub_id)
 
-                    # 并发获取清单详情并过滤（使用公共函数）
+                    # 性能优化：预构建 subId -> observation 的字典索引
+                    # 从 O(m×n) 降低到 O(m+n)，其中 m=清单数，n=观测记录数
+                    first_species_obs_dict = _build_subid_index(first_species_obs)
+
+                    # 并发获取清单详情并过滤（使用优化后的函数）
                     from concurrent.futures import ThreadPoolExecutor, as_completed
 
                     with ThreadPoolExecutor(max_workers=10) as executor:
                         futures = {
-                            executor.submit(check_checklist_for_species, client, sub_id, target_species_set, first_species_obs): sub_id
+                            executor.submit(check_checklist_for_species, client, sub_id, target_species_set, first_species_obs_dict): sub_id
                             for sub_id in sub_ids_to_check
                         }
                         for future in as_completed(futures):
-                            matching_obs = future.result()
-                            if matching_obs:
-                                all_observations.extend(matching_obs)
+                            sub_id = futures[future]
+                            try:
+                                matching_obs = future.result(timeout=30)
+                                if matching_obs:
+                                    all_observations.extend(matching_obs)
+                                    print(f"✓ 清单 {sub_id}: 找到 {len(matching_obs)} 条匹配观测")
+                            except TimeoutError:
+                                print(f"⚠ 清单 {sub_id} 处理超时")
+                            except Exception as e:
+                                print(f"✗ 清单 {sub_id} 处理失败: {e}")
 
         else:
             # 区域模式：使用行政区划代码
@@ -1003,24 +1162,34 @@ def api_track():
                 )
 
                 if first_species_obs:
-                    # 收集清单ID并过滤（使用公共函数）
+                    # 收集清单ID
                     sub_ids_to_check = set()
                     for obs in first_species_obs:
                         sub_id = obs.get('subId')
                         if sub_id:
                             sub_ids_to_check.add(sub_id)
 
+                    # 性能优化：预构建 subId -> observation 的字典索引
+                    first_species_obs_dict = _build_subid_index(first_species_obs)
+
                     from concurrent.futures import ThreadPoolExecutor, as_completed
 
                     with ThreadPoolExecutor(max_workers=10) as executor:
                         futures = {
-                            executor.submit(check_checklist_for_species, client, sub_id, target_species_set, first_species_obs): sub_id
+                            executor.submit(check_checklist_for_species, client, sub_id, target_species_set, first_species_obs_dict): sub_id
                             for sub_id in sub_ids_to_check
                         }
                         for future in as_completed(futures):
-                            matching_obs = future.result()
-                            if matching_obs:
-                                all_observations.extend(matching_obs)
+                            sub_id = futures[future]
+                            try:
+                                matching_obs = future.result(timeout=30)
+                                if matching_obs:
+                                    all_observations.extend(matching_obs)
+                                    print(f"✓ 清单 {sub_id}: 找到 {len(matching_obs)} 条匹配观测")
+                            except TimeoutError:
+                                print(f"⚠ 清单 {sub_id} 处理超时")
+                            except Exception as e:
+                                print(f"✗ 清单 {sub_id} 处理失败: {e}")
 
         if not all_observations:
             return jsonify({
@@ -1415,8 +1584,10 @@ def api_region_query():
                     'obs_count': obs_count
                 }
 
-            # 按清单分组所有观测记录
+            # 按清单分组所有观测记录，并获取每个清单的总鸟种数
             checklist_groups = {}
+            checklist_total_species = {}  # 存储每个清单的总鸟种数
+
             for group in sorted_species:
                 for obs in group['observations']:
                     sub_id = obs.get('subId')
@@ -1437,6 +1608,19 @@ def api_region_query():
                             'count': obs.get('howMany', 'X'),
                             'index': species_index[group['species_code']]['index']
                         })
+
+            # 获取每个清单的完整物种数（通过API）
+            print(f"正在获取 {len(checklist_groups)} 个清单的完整物种数...")
+            for sub_id in checklist_groups.keys():
+                try:
+                    checklist_detail = client.get_checklist_details(sub_id)
+                    if checklist_detail and 'obs' in checklist_detail:
+                        checklist_total_species[sub_id] = len(checklist_detail['obs'])
+                    else:
+                        checklist_total_species[sub_id] = None
+                except Exception as e:
+                    print(f"获取清单 {sub_id} 详情失败: {e}")
+                    checklist_total_species[sub_id] = None
 
             # 按时间排序清单
             sorted_checklists = sorted(checklist_groups.items(),
@@ -1468,7 +1652,13 @@ def api_region_query():
                 f.write(f"### 📋 {obs_date} - {location_link} {location_type}\n")
                 f.write(f"**清单ID:** {sub_id} ")
                 f.write(f"<button class='btn-view-checklist' data-subid='{sub_id}' onclick='viewChecklist(\"{sub_id}\")'>📋 查看完整清单</button>\n\n")
-                f.write(f"**目标鸟种数:** {len(species_list)} 种\n\n")
+
+                # 显示总鸟种数和目标鸟种数
+                total_species = checklist_total_species.get(sub_id)
+                if total_species is not None:
+                    f.write(f"**总鸟种数:** {total_species} 种 | **目标鸟种数:** {len(species_list)} 种\n\n")
+                else:
+                    f.write(f"**目标鸟种数:** {len(species_list)} 种\n\n")
 
                 # 列出该清单中的所有目标鸟种
                 for species in species_list:
@@ -2295,7 +2485,13 @@ def api_get_countries_by_continent():
 
 @app.route('/api/ebird/countries')
 def api_get_ebird_countries():
-    """获取所有 eBird 国家列表"""
+    """
+    获取所有 eBird 国家列表（智能排序）
+
+    排序规则：
+    1. 前20名：按特有种数量降序排列（鸟种最丰富的国家）
+    2. 其余国家：按英文名称首字母排序
+    """
     try:
         import sqlite3
 
@@ -2304,34 +2500,47 @@ def api_get_ebird_countries():
         if not os.path.exists(db_path):
             return jsonify({'error': '数据库未找到'}), 404
 
-        conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
+        with sqlite3.connect(db_path) as conn:
+            cursor = conn.cursor()
 
-        # 查询所有国家，按名称排序
-        cursor.execute("""
-            SELECT country_code, country_name_en, country_name_zh,
-                   has_regions, regions_count
-            FROM ebird_countries
-            ORDER BY country_name_en
-        """)
+            # 查询所有国家及其特有种数量
+            cursor.execute("""
+                SELECT
+                    ec.country_code,
+                    ec.country_name_en,
+                    ec.country_name_zh,
+                    ec.has_regions,
+                    ec.regions_count,
+                    COUNT(eb.id) as endemic_count
+                FROM ebird_countries ec
+                LEFT JOIN endemic_birds eb ON ec.id = eb.country_id
+                GROUP BY ec.country_code
+                ORDER BY endemic_count DESC, ec.country_name_en ASC
+            """)
 
-        countries = []
-        for row in cursor.fetchall():
-            code, name_en, name_zh, has_regions, regions_count = row
-            countries.append({
-                'code': code,
-                'name_en': name_en,
-                'name_zh': name_zh,
-                'has_regions': bool(has_regions),
-                'regions_count': regions_count
-            })
+            all_countries = []
+            for row in cursor.fetchall():
+                code, name_en, name_zh, has_regions, regions_count, endemic_count = row
+                all_countries.append({
+                    'code': code,
+                    'name_en': name_en,
+                    'name_zh': name_zh,
+                    'has_regions': bool(has_regions),
+                    'regions_count': regions_count,
+                    'endemic_count': endemic_count
+                })
 
-        conn.close()
+        # 智能排序：前20名按特有种排序，其余按字母排序
+        top_countries = all_countries[:20]  # 前20名（特有种最多）
+        other_countries = sorted(all_countries[20:], key=lambda x: x['name_en'])  # 其余按字母排序
+
+        countries = top_countries + other_countries
 
         return jsonify({
             'success': True,
             'countries': countries,
-            'total': len(countries)
+            'total': len(countries),
+            'top_endemic_count': 20  # 前20名是按特有种排序的
         })
 
     except Exception as e:
@@ -2622,4 +2831,15 @@ if __name__ == '__main__':
     print(f"🔑 按 Ctrl+C 停止服务器")
     print("=" * 60)
 
-    app.run(host='0.0.0.0', port=PORT, debug=DEBUG)
+    try:
+        app.run(host='0.0.0.0', port=PORT, debug=DEBUG)
+    except KeyboardInterrupt:
+        print("\n\n正在关闭服务器...")
+        # 优雅关闭：保存限流数据
+        rate_limiter.shutdown()
+        print("✓ 服务器已关闭")
+    except Exception as e:
+        print(f"\n⚠ 服务器异常退出: {e}")
+        # 确保保存数据
+        rate_limiter.shutdown()
+        raise

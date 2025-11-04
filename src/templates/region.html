@@ -158,37 +158,6 @@
 
         </div>
 
-        <!-- 快速位置选择 -->
-        <div class="quick-locations">
-            <h3>快速选择</h3>
-            <div class="location-grid">
-                <button onclick="selectQuickLocation('Darwin', -12.4634, 130.8456)"
-                        class="location-btn">
-                    <i class="bi bi-geo-alt-fill"></i> Darwin
-                </button>
-                <button onclick="selectQuickLocation('Sydney', -33.8688, 151.2093)"
-                        class="location-btn">
-                    <i class="bi bi-geo-alt-fill"></i> Sydney
-                </button>
-                <button onclick="selectQuickLocation('Melbourne', -37.8136, 144.9631)"
-                        class="location-btn">
-                    <i class="bi bi-geo-alt-fill"></i> Melbourne
-                </button>
-                <button onclick="selectQuickLocation('Brisbane', -27.4698, 153.0251)"
-                        class="location-btn">
-                    <i class="bi bi-geo-alt-fill"></i> Brisbane
-                </button>
-                <button onclick="selectQuickLocation('Perth', -31.9505, 115.8605)"
-                        class="location-btn">
-                    <i class="bi bi-geo-alt-fill"></i> Perth
-                </button>
-                <button onclick="selectQuickLocation('Adelaide', -34.9285, 138.6007)"
-                        class="location-btn">
-                    <i class="bi bi-geo-alt-fill"></i> Adelaide
-                </button>
-            </div>
-        </div>
-
         <!-- 操作按钮 -->
         <div class="action-buttons">
             <button onclick="startQuery()" class="btn btn-primary btn-lg">
@@ -238,14 +207,12 @@
 }
 
 .location-input,
-.query-params,
-.quick-locations {
+.query-params {
     margin-bottom: 2rem;
 }
 
 .location-input h3,
-.query-params h3,
-.quick-locations h3 {
+.query-params h3 {
     font-size: 1.2rem;
     margin-bottom: 1rem;
     color: var(--primary-color);
@@ -296,36 +263,6 @@
     font-weight: 600;
     color: var(--primary-color);
     margin-top: 0.5rem;
-}
-
-.location-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-    gap: 1rem;
-}
-
-.location-btn {
-    padding: 1rem;
-    border: 2px solid var(--border-color);
-    border-radius: 8px;
-    background: white;
-    cursor: pointer;
-    transition: var(--transition);
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 0.5rem;
-}
-
-.location-btn i {
-    font-size: 1.5rem;
-    color: var(--secondary-color);
-}
-
-.location-btn:hover {
-    border-color: var(--secondary-color);
-    transform: translateY(-2px);
-    box-shadow: var(--shadow-md);
 }
 
 .action-buttons {
@@ -503,19 +440,6 @@ function parseCoordinates(input) {
 
 function updateRadiusDisplay(value) {
     document.getElementById('radiusDisplay').textContent = value;
-}
-
-function selectQuickLocation(name, lat, lng) {
-    // 切换到坐标输入模式
-    switchInputMethod('coords');
-
-    // 填充到单行输入框
-    document.getElementById('coordsString').value = `${lat}, ${lng}`;
-
-    // 触发解析
-    parseCoordinates(`${lat}, ${lng}`);
-
-    showNotification(`已选择 ${name}`, 'success');
 }
 
 async function startQuery() {
@@ -749,16 +673,36 @@ async function loadCountries() {
 
         if (data.success && data.countries) {
             const select = document.getElementById('adminCountrySelect');
+            const topCount = data.top_endemic_count || 20;
 
-            data.countries.forEach(country => {
+            data.countries.forEach((country, index) => {
                 const displayName = country.name_zh || country.name_en;
                 const option = document.createElement('option');
                 option.value = country.code;
-                option.textContent = `${displayName} (${country.code})`;
+
+                // 前20名显示特有种数量和特殊标记
+                if (index < topCount && country.endemic_count > 0) {
+                    option.textContent = `🌟 ${displayName} (${country.code}) - ${country.endemic_count}种特有鸟`;
+                    option.style.fontWeight = 'bold';
+                } else {
+                    option.textContent = `${displayName} (${country.code})`;
+                }
+
                 select.appendChild(option);
+
+                // 在第20个之后添加分隔线
+                if (index === topCount - 1) {
+                    const separator = document.createElement('option');
+                    separator.disabled = true;
+                    separator.textContent = '─────── 其他国家（按字母排序） ───────';
+                    separator.style.textAlign = 'center';
+                    separator.style.fontStyle = 'italic';
+                    separator.style.color = '#999';
+                    select.appendChild(separator);
+                }
             });
 
-            console.log(`已加载 ${data.countries.length} 个国家`);
+            console.log(`已加载 ${data.countries.length} 个国家（前${topCount}名按特有种排序）`);
         }
     } catch (error) {
         console.error('加载国家列表失败:', error);

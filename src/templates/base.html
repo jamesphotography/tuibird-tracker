@@ -119,7 +119,7 @@
     });
     </script>
     <script>
-    // 鸟类信息弹窗功能
+    // 鸟类信息弹窗功能（支持内联调用和事件委托）
     async function showBirdInfo(birdName) {
         const modal = document.getElementById('birdInfoModal');
         const modalBody = document.getElementById('birdModalBody');
@@ -178,6 +178,19 @@
         const modal = document.getElementById('birdInfoModal');
         modal.style.display = 'none';
     }
+
+    // 事件委托：处理使用 data-bird-name 属性的鸟名链接
+    document.addEventListener('click', function(event) {
+        // 检查点击的是否是鸟名链接
+        const target = event.target;
+        if (target.classList.contains('bird-name-link')) {
+            event.preventDefault();
+            const birdName = target.getAttribute('data-bird-name');
+            if (birdName) {
+                showBirdInfo(birdName);
+            }
+        }
+    });
 
     // 点击模态框外部关闭
     window.addEventListener('click', function(event) {

@@ -899,16 +899,36 @@ async function loadCountries() {
 
         if (data.success && data.countries) {
             const select = document.getElementById('countrySelect');
+            const topCount = data.top_endemic_count || 20;
 
-            data.countries.forEach(country => {
+            data.countries.forEach((country, index) => {
                 const displayName = country.name_zh || country.name_en;
                 const option = document.createElement('option');
                 option.value = country.code;
-                option.textContent = `${displayName} (${country.code})`;
+
+                // 前20名显示特有种数量和特殊标记
+                if (index < topCount && country.endemic_count > 0) {
+                    option.textContent = `🌟 ${displayName} (${country.code}) - ${country.endemic_count}种特有鸟`;
+                    option.style.fontWeight = 'bold';
+                } else {
+                    option.textContent = `${displayName} (${country.code})`;
+                }
+
                 select.appendChild(option);
+
+                // 在第20个之后添加分隔线
+                if (index === topCount - 1) {
+                    const separator = document.createElement('option');
+                    separator.disabled = true;
+                    separator.textContent = '─────── 其他国家（按字母排序） ───────';
+                    separator.style.textAlign = 'center';
+                    separator.style.fontStyle = 'italic';
+                    separator.style.color = '#999';
+                    select.appendChild(separator);
+                }
             });
 
-            console.log(`已加载 ${data.countries.length} 个国家`);
+            console.log(`已加载 ${data.countries.length} 个国家（前${topCount}名按特有种排序）`);
         }
     } catch (error) {
         console.error('加载国家列表失败:', error);
