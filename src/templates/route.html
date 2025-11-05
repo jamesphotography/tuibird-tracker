@@ -478,7 +478,7 @@ function displayResults(data) {
                     .addTo(map)
                     .bindPopup(`
                         <b>${hotspot.locName}</b><br>
-                        <small>物种数: ${hotspot.numSpeciesAllTime || 'N/A'}<br>
+                        <small>历史累计: ${hotspot.numSpeciesAllTime || 'N/A'} 种<br>
                         最近观测: ${hotspot.latestObsDt || '未知'}</small><br>
                         <a href="https://ebird.org/hotspot/${hotspot.locId}" target="_blank">eBird页面</a>
                     `);
@@ -516,7 +516,7 @@ function displayResults(data) {
                 <div class="hotspot-meta">
                     <span><i class="bi bi-geo-alt-fill"></i> ${hotspot.lat.toFixed(4)}, ${hotspot.lng.toFixed(4)}</span>
                     <span><i class="bi bi-calendar"></i> 最近观测: ${hotspot.latestObsDt || '未知'}</span>
-                    <span><i class="bi bi-eye-fill"></i> 观测物种数: ${hotspot.numSpeciesAllTime || 'N/A'}</span>
+                    <span><i class="bi bi-eye-fill"></i> 历史累计鸟种数: ${hotspot.numSpeciesAllTime || 'N/A'}</span>
                 </div>
                 <div style="margin-top: 0.8rem;">
                     <button onclick="viewHotspotDetails('${hotspot.locId}', '${hotspot.locName.replace(/'/g, "\\'")}', ${hotspot.lat}, ${hotspot.lng})" class="btn btn-primary btn-sm">
