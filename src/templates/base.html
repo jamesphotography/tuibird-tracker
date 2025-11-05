@@ -56,6 +56,15 @@
         </div>
     </nav>
 
+    <!-- 加载动画遮罩层 -->
+    <div id="loadingOverlay" class="loading-overlay">
+        <div class="loading-content">
+            <div class="loading-spinner"></div>
+            <div class="loading-text" id="loadingText">正在查询中...</div>
+            <div class="loading-subtext" id="loadingSubtext">请稍候，正在从eBird数据库获取数据</div>
+        </div>
+    </div>
+
     <!-- 主要内容 -->
     <main class="container">
         {% block content %}{% endblock %}

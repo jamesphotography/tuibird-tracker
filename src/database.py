@@ -282,3 +282,95 @@ class BirdDatabase:
                 else:
                     selected_species.clear()
                     seen_codes.clear()
+
+    def load_endemic_birds_map(self) -> Dict[str, List[Dict]]:
+        """
+        加载所有特有种信息到内存字典（用于快速查询）
+
+        Returns:
+            字典: {scientific_name: [{"country_code": "AU", "country_name_zh": "澳大利亚", ...}, ...]}
+
+        性能优化：
+        - 一次性加载全部特有种到内存（~3,000条记录，约0.6MB）
+        - O(1) 查找时间复杂度
+        - 应用启动时调用一次，运行期间无SQL开销
+        """
+        endemic_map = {}
+
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                query = """
+                    SELECT
+                        eb.scientific_name,
+                        eb.name_zh,
+                        eb.name_en,
+                        ec.country_code,
+                        ec.country_name_zh,
+                        ec.country_name_en
+                    FROM endemic_birds eb
+                    JOIN ebird_countries ec ON eb.country_id = ec.id
+                    ORDER BY eb.scientific_name
+                """
+                cursor.execute(query)
+                rows = cursor.fetchall()
+
+                for row in rows:
+                    sci_name = row['scientific_name']
+
+                    # 标准化学名（去掉亚种后缀，仅保留属名+种名）
+                    # 例如: "Dromaius novaehollandiae rothschildi" -> "Dromaius novaehollandiae"
+                    parts = sci_name.split()
+                    normalized_name = " ".join(parts[:2]) if len(parts) >= 2 else sci_name
+
+                    endemic_info = {
+                        'country_code': row['country_code'],
+                        'country_name_zh': row['country_name_zh'],
+                        'country_name_en': row['country_name_en'],
+                        'name_zh': row['name_zh'],
+                        'name_en': row['name_en']
+                    }
+
+                    # 支持一对多关系（某鸟可能是多个国家的特有种）
+                    if normalized_name not in endemic_map:
+                        endemic_map[normalized_name] = []
+                    endemic_map[normalized_name].append(endemic_info)
+
+                print(f"✅ 特有种数据已加载: {len(endemic_map)} 个物种，来自 {len(set(info['country_code'] for infos in endemic_map.values() for info in infos))} 个国家")
+
+        except sqlite3.Error as e:
+            print(f"⚠️ 加载特有种数据失败: {e}")
+            print("   特有种标识功能将不可用")
+
+        return endemic_map
+
+    def get_endemic_info(self, scientific_name: str, endemic_map: Dict) -> Optional[List[Dict]]:
+        """
+        查询某个物种是否为特有种
+
+        Args:
+            scientific_name: 鸟类学名（如 "Dromaius novaehollandiae"）
+            endemic_map: 特有种字典（由 load_endemic_birds_map() 返回）
+
+        Returns:
+            特有种信息列表，如果不是特有种则返回 None
+
+            示例返回值:
+            [
+                {
+                    "country_code": "AU",
+                    "country_name_zh": "澳大利亚",
+                    "country_name_en": "Australia",
+                    "name_zh": "鸸鹋",
+                    "name_en": "Emu"
+                }
+            ]
+        """
+        if not scientific_name or not endemic_map:
+            return None
+
+        # 标准化学名（去掉亚种后缀）
+        parts = scientific_name.split()
+        normalized_name = " ".join(parts[:2]) if len(parts) >= 2 else scientific_name
+
+        return endemic_map.get(normalized_name)

@@ -532,9 +532,15 @@ async function startQuery() {
         days_back: parseInt(document.getElementById('daysBack').value)
     };
 
-    try {
-        showNotification('正在查询该区域的鸟类观测记录，请稍候...', 'info');
+    // 显示加载动画
+    const radius = params.radius;
+    const days = params.days_back;
+    showLoading(
+        `正在查询区域鸟讯...`,
+        `正在搜索半径 ${radius} km 范围内，最近 ${days} 天的鸟类观测记录...`
+    );
 
+    try {
         const data = await apiRequest('/api/region_query', {
             method: 'POST',
             body: JSON.stringify(params)
@@ -599,6 +605,9 @@ async function startQuery() {
         }
     } catch (error) {
         // Error already handled
+    } finally {
+        // 隐藏加载动画
+        hideLoading();
     }
 }
 

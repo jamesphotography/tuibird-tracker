@@ -125,7 +125,36 @@ def generate_region_report(species_groups, placename, radius, days_back, total_o
                 en_name = group['en_name']
                 obs_count = len(group['observations'])
 
-                f.write(f"### No.{i}. ({species_code}) 🐦 {cn_name} ({en_name}) - {obs_count}个目击清单\n")
+                # 获取特有种信息（从第一条观测记录中）
+                endemic_info = None
+                if group['observations']:
+                    endemic_info = group['observations'][0].get('endemic_info')
+
+                # 构建特有种标识
+                endemic_badge = ""
+                if endemic_info:
+                    if len(endemic_info) == 1:
+                        # 单个国家特有种
+                        country_code = endemic_info[0]['country_code']
+                        # 国家特定图标
+                        country_icon = {
+                            'AU': '🦘', 'NZ': '🥝', 'ID': '🦜', 'PH': '🦜',
+                            'BR': '🦅', 'MX': '🦅', 'MG': '🦎', 'PG': '🦜'
+                        }.get(country_code, '🌟')
+                        endemic_badge = f" {country_icon}**特有**"
+                    else:
+                        # 多国家特有种（显示所有国家图标）
+                        icons = []
+                        for info in endemic_info:
+                            country_code = info['country_code']
+                            icon = {
+                                'AU': '🦘', 'NZ': '🥝', 'ID': '🦜', 'PH': '🦜',
+                                'BR': '🦅', 'MX': '🦅', 'MG': '🦎', 'PG': '🦜'
+                            }.get(country_code, '🌟')
+                            icons.append(icon)
+                        endemic_badge = f" {''.join(icons)}**特有**"
+
+                f.write(f"### No.{i}. ({species_code}) 🐦 {cn_name} ({en_name}){endemic_badge} - {obs_count}个目击清单\n")
 
                 # 按时间排序观测记录，最新的在前
                 sorted_obs = sorted(group['observations'],

@@ -2,18 +2,33 @@
 
 /**
  * 显示加载动画
+ * @param {string} mainText - 主要提示文本
+ * @param {string} subText - 副提示文本
  */
-function showLoading(message = '加载中...') {
-    // TODO: 实现加载动画
-    console.log('Loading:', message);
+function showLoading(mainText = '正在查询中...', subText = '请稍候，正在从eBird数据库获取数据') {
+    const overlay = document.getElementById('loadingOverlay');
+    const loadingText = document.getElementById('loadingText');
+    const loadingSubtext = document.getElementById('loadingSubtext');
+
+    if (overlay) {
+        if (loadingText) loadingText.textContent = mainText;
+        if (loadingSubtext) loadingSubtext.textContent = subText;
+        overlay.classList.add('active');
+        // 防止页面滚动
+        document.body.style.overflow = 'hidden';
+    }
 }
 
 /**
  * 隐藏加载动画
  */
 function hideLoading() {
-    // TODO: 实现
-    console.log('Loading hidden');
+    const overlay = document.getElementById('loadingOverlay');
+    if (overlay) {
+        overlay.classList.remove('active');
+        // 恢复页面滚动
+        document.body.style.overflow = '';
+    }
 }
 
 /**

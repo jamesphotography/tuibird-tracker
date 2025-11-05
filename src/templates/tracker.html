@@ -813,9 +813,15 @@ async function startTracking() {
     trackBtn.disabled = true;
     trackBtn.innerHTML = '<i class="bi bi-hourglass-split"></i> 查询中...';
 
-    try {
-        showNotification('正在查询 eBird 数据，请稍候...', 'info');
+    // 显示加载动画
+    const speciesCount = selectedSpeciesList.length;
+    const speciesNames = selectedSpeciesList.map(s => s.cn_name).join('、');
+    showLoading(
+        `正在追踪 ${speciesCount} 个物种...`,
+        `正在查询 ${speciesNames} 的观测记录，请稍候...`
+    );
 
+    try {
         const data = await apiRequest('/api/track', {
             method: 'POST',
             body: JSON.stringify(params)
@@ -879,6 +885,9 @@ async function startTracking() {
     } catch (error) {
         // Error already handled
     } finally {
+        // 隐藏加载动画
+        hideLoading();
+
         // 恢复按钮
         trackBtn.disabled = false;
         trackBtn.innerHTML = '<i class="bi bi-play-circle-fill"></i> 开始追踪';
