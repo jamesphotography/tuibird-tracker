@@ -26,6 +26,7 @@ import requests
 from config import ConfigManager, DB_FILE, EBIRD_API_BASE_URL
 from database import BirdDatabase
 from api_client import get_api_key_with_validation, EBirdAPIClient
+from endemic_utils import generate_endemic_badge
 from utils import (
     safe_input,
     get_location_from_ip,
@@ -130,29 +131,8 @@ def generate_region_report(species_groups, placename, radius, days_back, total_o
                 if group['observations']:
                     endemic_info = group['observations'][0].get('endemic_info')
 
-                # 构建特有种标识
-                endemic_badge = ""
-                if endemic_info:
-                    if len(endemic_info) == 1:
-                        # 单个国家特有种
-                        country_code = endemic_info[0]['country_code']
-                        # 国家特定图标
-                        country_icon = {
-                            'AU': '🦘', 'NZ': '🥝', 'ID': '🦜', 'PH': '🦜',
-                            'BR': '🦅', 'MX': '🦅', 'MG': '🦎', 'PG': '🦜'
-                        }.get(country_code, '🌟')
-                        endemic_badge = f" {country_icon}**特有**"
-                    else:
-                        # 多国家特有种（显示所有国家图标）
-                        icons = []
-                        for info in endemic_info:
-                            country_code = info['country_code']
-                            icon = {
-                                'AU': '🦘', 'NZ': '🥝', 'ID': '🦜', 'PH': '🦜',
-                                'BR': '🦅', 'MX': '🦅', 'MG': '🦎', 'PG': '🦜'
-                            }.get(country_code, '🌟')
-                            icons.append(icon)
-                        endemic_badge = f" {''.join(icons)}**特有**"
+                # 构建特有种标识（使用统一工具函数）
+                endemic_badge = generate_endemic_badge(endemic_info)
 
                 f.write(f"### No.{i}. ({species_code}) 🐦 {cn_name} ({en_name}){endemic_badge} - {obs_count}个目击清单\n")
 

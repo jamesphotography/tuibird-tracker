@@ -211,7 +211,7 @@ function debounce(func, wait) {
 
 // ==================== 页面加载完成后执行 ====================
 document.addEventListener('DOMContentLoaded', function() {
-    console.log('TuiBird Tracker Web App Loaded');
+    // 生产环境已移除调试日志
 
     // 同步 localStorage 中的 API Key 到 Cookie
     const apiKey = getLocalApiKey();

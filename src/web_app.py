@@ -26,6 +26,7 @@ load_dotenv()
 from config import VERSION, BUILD_DATE, ConfigManager, DB_FILE, AUSTRALIA_STATES, get_resource_path
 from database import BirdDatabase
 from api_client import EBirdAPIClient, get_api_key_with_validation
+from endemic_utils import generate_endemic_badge
 
 app = Flask(__name__)
 
@@ -1586,29 +1587,8 @@ def api_track():
                             count = sp['count']
                             endemic_info = sp.get('endemic_info')
 
-                            # 构建特有种标识
-                            endemic_badge = ""
-                            if endemic_info:
-                                if len(endemic_info) == 1:
-                                    # 单个国家特有种
-                                    country_code = endemic_info[0]['country_code']
-                                    # 国家特定图标
-                                    country_icon = {
-                                        'AU': '🦘', 'NZ': '🥝', 'ID': '🦜', 'PH': '🦜',
-                                        'BR': '🦅', 'MX': '🦅', 'MG': '🦎', 'PG': '🦜'
-                                    }.get(country_code, '🌟')
-                                    endemic_badge = f" {country_icon}**特有**"
-                                else:
-                                    # 多国家特有种（显示所有国家图标）
-                                    icons = []
-                                    for info in endemic_info:
-                                        country_code = info['country_code']
-                                        icon = {
-                                            'AU': '🦘', 'NZ': '🥝', 'ID': '🦜', 'PH': '🦜',
-                                            'BR': '🦅', 'MX': '🦅', 'MG': '🦎', 'PG': '🦜'
-                                        }.get(country_code, '🌟')
-                                        icons.append(icon)
-                                    endemic_badge = f" {''.join(icons)}**特有**"
+                            # 构建特有种标识（使用统一工具函数）
+                            endemic_badge = generate_endemic_badge(endemic_info)
 
                             f.write(f"- **{obs_date}**: {species_name}{endemic_badge} - 观测数量: {count} 只")
                             break  # 只显示第一个
@@ -1939,30 +1919,9 @@ def api_region_query():
 
                 # 列出该清单中的所有目标鸟种
                 for species in species_list:
-                    # 构建特有种标识
-                    endemic_badge = ""
+                    # 构建特有种标识（使用统一工具函数）
                     endemic_info = species.get('endemic_info')
-                    if endemic_info:
-                        if len(endemic_info) == 1:
-                            # 单个国家特有种
-                            country_code = endemic_info[0]['country_code']
-                            # 国家特定图标
-                            country_icon = {
-                                'AU': '🦘', 'NZ': '🥝', 'ID': '🦜', 'PH': '🦜',
-                                'BR': '🦅', 'MX': '🦅', 'MG': '🦎', 'PG': '🦜'
-                            }.get(country_code, '🌟')
-                            endemic_badge = f" {country_icon}**特有**"
-                        else:
-                            # 多国家特有种（显示所有国家图标）
-                            icons = []
-                            for info in endemic_info:
-                                country_code = info['country_code']
-                                icon = {
-                                    'AU': '🦘', 'NZ': '🥝', 'ID': '🦜', 'PH': '🦜',
-                                    'BR': '🦅', 'MX': '🦅', 'MG': '🦎', 'PG': '🦜'
-                                }.get(country_code, '🌟')
-                                icons.append(icon)
-                            endemic_badge = f" {''.join(icons)}**特有**"
+                    endemic_badge = generate_endemic_badge(endemic_info)
 
                     f.write(f"- **No.{species['index']}** {species['cn_name']} ({species['en_name']}){endemic_badge} - 观测数量: {species['count']} 只\n")
 
