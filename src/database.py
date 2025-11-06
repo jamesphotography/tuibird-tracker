@@ -7,23 +7,154 @@
 
 import sqlite3
 import sys
+import threading
 from typing import List, Dict, Optional
 from contextlib import contextmanager
+from queue import Queue, Empty
+
+
+class ConnectionPool:
+    """
+    SQLite 连接池实现
+
+    特点:
+    - 线程安全的连接池管理
+    - 自动回收和复用连接
+    - 支持最大连接数限制
+    - 空闲连接自动回收
+
+    性能提升:
+    - 避免频繁创建/关闭连接的开销
+    - 在 Web 应用中提升并发性能
+    """
+
+    def __init__(self, db_path: str, pool_size: int = 5, timeout: float = 5.0):
+        """
+        初始化连接池
+
+        Args:
+            db_path: 数据库文件路径
+            pool_size: 连接池大小，默认5个连接
+            timeout: 获取连接超时时间（秒），默认5秒
+        """
+        self.db_path = db_path
+        self.pool_size = pool_size
+        self.timeout = timeout
+        self._pool = Queue(maxsize=pool_size)
+        self._lock = threading.Lock()
+        self._connection_count = 0
+
+        # 预创建连接（可选，按需创建更节省资源）
+        # for _ in range(pool_size):
+        #     self._pool.put(self._create_connection())
+
+    def _create_connection(self) -> sqlite3.Connection:
+        """创建新的数据库连接"""
+        conn = sqlite3.connect(
+            self.db_path,
+            check_same_thread=False,  # 允许多线程共享连接（需要小心使用）
+            timeout=30.0  # 数据库锁超时
+        )
+        conn.row_factory = sqlite3.Row
+        # 性能优化设置
+        conn.execute("PRAGMA journal_mode=WAL")  # WAL 模式提升并发性能
+        conn.execute("PRAGMA synchronous=NORMAL")  # 平衡性能和安全性
+        self._connection_count += 1
+        return conn
+
+    @contextmanager
+    def get_connection(self):
+        """
+        从连接池获取连接（上下文管理器）
+
+        Yields:
+            sqlite3.Connection: 数据库连接对象
+
+        Raises:
+            Empty: 获取连接超时
+
+        Example:
+            >>> with pool.get_connection() as conn:
+            ...     cursor = conn.cursor()
+            ...     cursor.execute("SELECT * FROM birds")
+        """
+        conn = None
+        try:
+            # 尝试从池中获取连接
+            try:
+                conn = self._pool.get(timeout=self.timeout)
+            except Empty:
+                # 池中无可用连接，尝试创建新连接
+                with self._lock:
+                    if self._connection_count < self.pool_size:
+                        conn = self._create_connection()
+                    else:
+                        # 达到最大连接数，等待其他连接释放
+                        raise Empty("连接池已满，请稍后重试")
+
+            yield conn
+
+        except Exception as e:
+            # 连接发生错误，关闭并不放回池中
+            if conn:
+                conn.close()
+                with self._lock:
+                    self._connection_count -= 1
+            raise
+
+        finally:
+            # 连接使用完毕，放回池中
+            if conn:
+                try:
+                    # 回滚未提交的事务
+                    conn.rollback()
+                    # 放回池中
+                    self._pool.put_nowait(conn)
+                except:
+                    # 放回失败，关闭连接
+                    conn.close()
+                    with self._lock:
+                        self._connection_count -= 1
+
+    def close_all(self):
+        """关闭所有连接池中的连接"""
+        with self._lock:
+            while not self._pool.empty():
+                try:
+                    conn = self._pool.get_nowait()
+                    conn.close()
+                    self._connection_count -= 1
+                except Empty:
+                    break
+        print(f"连接池已关闭，共关闭 {self._connection_count} 个连接")
+
+    def __del__(self):
+        """析构函数，确保连接被关闭"""
+        self.close_all()
 
 
 class BirdDatabase:
-    """鸟类数据库管理类"""
+    """鸟类数据库管理类（支持连接池）"""
 
-    def __init__(self, db_path: str):
+    def __init__(self, db_path: str, use_pool: bool = True, pool_size: int = 5):
         """
         初始化数据库连接
 
         Args:
             db_path: 数据库文件路径
+            use_pool: 是否使用连接池，默认 True
+            pool_size: 连接池大小，默认 5
         """
         self.db_path = db_path
+        self.use_pool = use_pool
         self._birds_cache: Optional[List[Dict]] = None
         self._code_to_name_map: Optional[Dict[str, str]] = None
+
+        # 初始化连接池
+        if use_pool:
+            self._pool = ConnectionPool(db_path, pool_size=pool_size)
+        else:
+            self._pool = None
 
     @contextmanager
     def get_connection(self):
@@ -33,17 +164,23 @@ class BirdDatabase:
         Yields:
             sqlite3.Connection: 数据库连接对象
         """
-        conn = None
-        try:
-            conn = sqlite3.connect(self.db_path)
-            conn.row_factory = sqlite3.Row
-            yield conn
-        except sqlite3.Error as e:
-            print(f"❌ 数据库连接错误: {e}")
-            raise
-        finally:
-            if conn:
-                conn.close()
+        if self.use_pool and self._pool:
+            # 使用连接池
+            with self._pool.get_connection() as conn:
+                yield conn
+        else:
+            # 传统模式：每次创建新连接
+            conn = None
+            try:
+                conn = sqlite3.connect(self.db_path)
+                conn.row_factory = sqlite3.Row
+                yield conn
+            except sqlite3.Error as e:
+                print(f"❌ 数据库连接错误: {e}")
+                raise
+            finally:
+                if conn:
+                    conn.close()
 
     def load_all_birds(self) -> List[Dict]:
         """
