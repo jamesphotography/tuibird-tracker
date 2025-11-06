@@ -21,5 +21,9 @@ python-dateutil==2.8.2
 # Markdown to HTML
 markdown==3.5.1
 
+# Frontend Asset Minification
+rcssmin==1.1.2
+rjsmin==1.2.2
+
 # Production WSGI Server
 gunicorn==21.2.0

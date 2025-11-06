@@ -833,6 +833,20 @@ def _reset_api_client():
     api_client = None
 
 
+@app.context_processor
+def inject_debug():
+    """
+    注入 DEBUG 变量到所有模板
+
+    根据 DEBUG 环境变量决定加载原始或压缩版本的 CSS/JS
+    - DEBUG=True: 加载 style.css, app.js (开发环境)
+    - DEBUG=False: 加载 style.min.css, app.min.js (生产环境)
+    """
+    import os
+    debug = os.environ.get('DEBUG', 'False').lower() == 'true'
+    return {'DEBUG': debug}
+
+
 @app.route('/')
 def index():
     """主页"""

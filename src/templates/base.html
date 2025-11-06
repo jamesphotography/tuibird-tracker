@@ -6,7 +6,11 @@
     <title>{% block title %}慧眼找鸟{% endblock %}</title>
 
     <!-- CSS -->
+    {% if DEBUG %}
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    {% else %}
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.min.css') }}">
+    {% endif %}
 
     <!-- Bootstrap Icons -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
@@ -92,7 +96,11 @@
     </footer>
 
     <!-- JavaScript -->
+    {% if DEBUG %}
     <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+    {% else %}
+    <script src="{{ url_for('static', filename='js/app.min.js') }}"></script>
+    {% endif %}
     <script>
     // CSRF Token 设置
     const csrfToken = '{{ csrf_token() }}';
